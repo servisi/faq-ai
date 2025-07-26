@@ -140,7 +140,8 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 // Kredi Satın Al (Dinamik success/cancel)
 app.post('/buy-credits', authenticate, async (req, res) => {
   const { amount, return_url } = req.body; // return_url eklendi
-  const encodedReturnUrl = encodeURIComponent(return_url || 'http://124.244.133.175:3000/success'); // Fallback
+  const baseUrl = process.env.VERCEL_URL || 'http://localhost:3000'; // Vercel için dinamik, yerel için fallback
+  const encodedReturnUrl = encodeURIComponent(return_url || `${baseUrl}/success`);
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
     line_items: [{
@@ -152,8 +153,8 @@ app.post('/buy-credits', authenticate, async (req, res) => {
       quantity: 1,
     }],
     mode: 'payment',
-    success_url: `http://124.244.133.175:3000/success?session_id={CHECKOUT_SESSION_ID}&return_url=${encodedReturnUrl}`,
-    cancel_url: `http://124.244.133.175:3000/cancel?return_url=${encodedReturnUrl}`,
+    success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&return_url=${encodedReturnUrl}`,
+    cancel_url: `${baseUrl}/cancel?return_url=${encodedReturnUrl}`,
     metadata: { userId: req.userId.toString(), type: 'credits', amount }
   });
   res.json({ id: session.id });
@@ -162,7 +163,8 @@ app.post('/buy-credits', authenticate, async (req, res) => {
 // Pro Üyelik Yükselt (Dinamik success/cancel)
 app.post('/upgrade-pro', authenticate, async (req, res) => {
   const { return_url } = req.body; // return_url eklendi
-  const encodedReturnUrl = encodeURIComponent(return_url || 'http://124.244.133.175:3000/success'); // Fallback
+  const baseUrl = process.env.VERCEL_URL || 'http://localhost:3000';
+  const encodedReturnUrl = encodeURIComponent(return_url || `${baseUrl}/success`);
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
     line_items: [{
@@ -174,8 +176,8 @@ app.post('/upgrade-pro', authenticate, async (req, res) => {
       quantity: 1,
     }],
     mode: 'payment',
-    success_url: `http://124.244.133.175:3000/success?session_id={CHECKOUT_SESSION_ID}&return_url=${encodedReturnUrl}`,
-    cancel_url: `http://124.244.133.175:3000/cancel?return_url=${encodedReturnUrl}`,
+    success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&return_url=${encodedReturnUrl}`,
+    cancel_url: `${baseUrl}/cancel?return_url=${encodedReturnUrl}`,
     metadata: { userId: req.userId.toString(), type: 'pro' }
   });
   res.json({ id: session.id });
