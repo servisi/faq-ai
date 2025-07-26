@@ -24,10 +24,7 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', UserSchema);
 
-const openai = new OpenAI({ 
-  apiKey: process.env.DEEPSEEK_API_KEY,
-  baseURL: 'https://api.deepseek.com'
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const JWT_SECRET = process.env.JWT_SECRET;
 const SERPAPI_KEY = process.env.SERPAPI_KEY;
@@ -123,7 +120,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: 'deepseek-chat',
+      model: 'gpt-3.5-turbo',
       messages: [{ role: 'user', content: prompt }],
     });
     const faqs = JSON.parse(completion.choices[0].message.content).faqs;
