@@ -6,12 +6,12 @@ const dotenv = require('dotenv');
 const Stripe = require('stripe');
 const OpenAI = require('openai');
 const axios = require('axios');
-const cors = require('cors'); // CORS için ekle (npm install cors)
+const cors = require('cors');
 
 dotenv.config();
 const app = express();
 app.use(express.json());
-app.use(cors()); // CORS'u etkinleştir, tüm origin'lere izin ver (production'da kısıtla)
+app.use(cors()); // CORS'u etkinleştir
 
 mongoose.connect(process.env.MONGO_URI);
 
@@ -19,8 +19,8 @@ const UserSchema = new mongoose.Schema({
   email: String,
   credits: { type: Number, default: 400 },
   lastReset: { type: Date, default: Date.now },
-  plan: { type: String, default: 'free' }, // free or pro
-  expirationDate: { type: Date, default: null } // Pro için bitiş tarihi
+  plan: { type: String, default: 'free' },
+  expirationDate: { type: Date, default: null }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -42,7 +42,7 @@ function authenticate(req, res, next) {
   }
 }
 
-// Kayıt Endpoint (Sadece Email)
+// Kayıt Endpoint
 app.post('/register', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
@@ -65,14 +65,13 @@ app.get('/user-info', authenticate, async (req, res) => {
     remainingDays = Math.max(0, Math.ceil((user.expirationDate - now) / (1000 * 60 * 60 * 24)));
   }
 
-  // Ücretsizse kredi reset
   if (user.plan === 'free') {
     if (now.getMonth() !== user.lastReset.getMonth() || now.getFullYear() !== user.lastReset.getFullYear()) {
       user.credits = 400;
       user.lastReset = now;
       await user.save();
     }
-  } // Pro için kredi sınırsız, credits'ı -1 gibi set et veya ignore
+  }
 
   res.json({
     plan: user.plan === 'free' ? 'Ücretsiz Sürüm' : 'Pro Sürüm',
@@ -81,7 +80,7 @@ app.get('/user-info', authenticate, async (req, res) => {
   });
 });
 
-// FAQ Üret Endpoint (Değişiklik: Pro için kredi düşme yok)
+// FAQ Üret Endpoint
 app.post('/api/generate-faq', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -137,10 +136,10 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   }
 });
 
-// Kredi Satın Al (Dinamik success/cancel)
+// Kredi Satın Al
 app.post('/buy-credits', authenticate, async (req, res) => {
-  const { amount, return_url } = req.body; // return_url eklendi
-  const baseUrl = process.env.VERCEL_URL || 'http://localhost:3000'; // Vercel için dinamik, yerel için fallback
+  const { amount, return_url } = req.body;
+  const baseUrl = process.env.VERCEL_URL || 'http://localhost:3000';
   const encodedReturnUrl = encodeURIComponent(return_url || `${baseUrl}/success`);
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
@@ -148,7 +147,7 @@ app.post('/buy-credits', authenticate, async (req, res) => {
       price_data: {
         currency: 'usd',
         product_data: { name: `${amount} Credits` },
-        unit_amount: 500, // $5 for 1000 credits, adjust
+        unit_amount: 500,
       },
       quantity: 1,
     }],
@@ -160,9 +159,9 @@ app.post('/buy-credits', authenticate, async (req, res) => {
   res.json({ id: session.id });
 });
 
-// Pro Üyelik Yükselt (Dinamik success/cancel)
+// Pro Üyelik Yükselt
 app.post('/upgrade-pro', authenticate, async (req, res) => {
-  const { return_url } = req.body; // return_url eklendi
+  const { return_url } = req.body;
   const baseUrl = process.env.VERCEL_URL || 'http://localhost:3000';
   const encodedReturnUrl = encodeURIComponent(return_url || `${baseUrl}/success`);
   const session = await stripe.checkout.sessions.create({
@@ -171,7 +170,7 @@ app.post('/upgrade-pro', authenticate, async (req, res) => {
       price_data: {
         currency: 'usd',
         product_data: { name: 'Pro Üyelik (1 Ay)' },
-        unit_amount: 1000, // $10/ay, adjust
+        unit_amount: 1000,
       },
       quantity: 1,
     }],
@@ -183,7 +182,7 @@ app.post('/upgrade-pro', authenticate, async (req, res) => {
   res.json({ id: session.id });
 });
 
-// Stripe Webhook (Ödeme Sonrası İşlem)
+// Stripe Webhook
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
@@ -202,8 +201,8 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
         user.credits += parseInt(session.metadata.amount);
       } else if (session.metadata.type === 'pro') {
         user.plan = 'pro';
-        user.expirationDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 gün
-        user.credits = -1; // Sınırsız için
+        user.expirationDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        user.credits = -1;
       }
       await user.save();
     }
@@ -211,24 +210,25 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   res.json({ received: true });
 });
 
-// Success Route (Dinamik Redirect)
+// Success Route
 app.get('/success', async (req, res) => {
   const returnUrl = req.query.return_url ? decodeURIComponent(req.query.return_url) : null;
   if (returnUrl) {
-    res.redirect(returnUrl); // Otomatik geri dön
+    res.redirect(returnUrl);
   } else {
     res.send('<h1>Ödeme Başarılı! Krediniz veya üyeliğiniz eklendi. Lütfen WordPress admin panelinize dönün ve ayarlar sayfasını yenileyin.</h1>');
   }
 });
 
-// Cancel Route (Dinamik Redirect)
+// Cancel Route
 app.get('/cancel', (req, res) => {
   const returnUrl = req.query.return_url ? decodeURIComponent(req.query.return_url) : null;
   if (returnUrl) {
-    res.redirect(returnUrl); // Otomatik geri dön
+    res.redirect(returnUrl);
   } else {
     res.send('<h1>Ödeme İptal Edildi. Lütfen tekrar deneyin veya WordPress admin panelinize dönün.</h1>');
   }
 });
 
-app.listen(3000, () => console.log('Server running on port 3000'));
+// Vercel için export (serverless)
+module.exports = app;
