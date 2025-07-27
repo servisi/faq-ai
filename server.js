@@ -42,7 +42,7 @@ const openai = new OpenAI({
   baseURL: 'https://api.deepseek.com'
 });
 const JWT_SECRET = process.env.JWT_SECRET;
-const SERPAPI_KEY = process.env.SERPAPI_KEY;
+const SERPER_API_KEY = process.env.SERPER_API_KEY; // Değiştirildi: SERPAPI_KEY yerine SERPER_API_KEY
 const ADMIN_USER = process.env.ADMIN_USER;
 const ADMIN_PASS = process.env.ADMIN_PASS;
 
@@ -143,15 +143,19 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   let recentNews = '';
   try {
-    const searchResponse = await axios.get('https://serpapi.com/search', {
-      params: {
-        q: `${title} son haberler`,
-        api_key: SERPAPI_KEY,
-        num: 5,
-        tbs: 'qdr:w'
+    const searchResponse = await axios.post('https://google.serper.dev/search', {
+      q: `${title} son haberler`,
+      num: 5,
+      tbs: 'qdr:w',
+      hl: 'tr', // Türkçe için eklendi, gerekirse değiştir
+      gl: 'tr'  // Türkçe sonuçlar için
+    }, {
+      headers: {
+        'X-API-KEY': SERPER_API_KEY,
+        'Content-Type': 'application/json'
       }
     });
-    const results = searchResponse.data.organic_results || [];
+    const results = searchResponse.data.organic || []; // Değiştirildi: organic_results yerine organic
     recentNews = results.map(result => `${result.title}: ${result.snippet} (Kaynak: ${result.link})`).join('\n');
   } catch (searchErr) {
     console.error('Search error:', searchErr);
