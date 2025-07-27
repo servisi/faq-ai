@@ -38,7 +38,7 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY, // Değiştirildi: DEEPSEEK_API_KEY yerine OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
 });
 const JWT_SECRET = process.env.JWT_SECRET;
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
@@ -138,34 +138,44 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
     return res.status(402).json({ error: 'no_credits' });
   }
 
-  const { title, num_questions } = req.body;
+  const { title, num_questions, language = 'tr' } = req.body;
 
   let recentNews = '';
+  let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news'; // Dil bazında uyarla
+  let serperHl = language; // hl=tr, en, etc.
+  let serperGl = language === 'tr' ? 'tr' : 'us'; // Örnek, ülke bazında uyarla (daha fazla dil için genişlet)
+
   try {
     const searchResponse = await axios.post('https://google.serper.dev/search', {
-      q: `${title} son haberler`,
+      q: `${title} ${searchQuerySuffix}`,
       num: 5,
       tbs: 'qdr:w',
-      hl: 'tr', // Türkçe için eklendi, gerekirse değiştir
-      gl: 'tr'  // Türkçe sonuçlar için
+      hl: serperHl,
+      gl: serperGl
     }, {
       headers: {
         'X-API-KEY': SERPER_API_KEY,
         'Content-Type': 'application/json'
       }
     });
-    const results = searchResponse.data.organic || []; // Değiştirildi: organic_results yerine organic
+    const results = searchResponse.data.organic || [];
     recentNews = results.map(result => `${result.title}: ${result.snippet} (Kaynak: ${result.link})`).join('\n');
   } catch (searchErr) {
     console.error('Search error:', searchErr);
-    recentNews = 'Güncel haberler tespit edilemedi.';
+    recentNews = language === 'tr' ? 'Güncel haberler tespit edilemedi.' : 'Recent news could not be detected.';
   }
 
-  const prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
+  // Prompt'u dil bazında uyarla (daha fazla dil için switch ekle)
+  let prompt;
+  if (language === 'tr') {
+    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
+  } else {
+    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide short, informative answers for each. Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
+  }
 
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // Değiştirildi: deepseek-chat yerine gpt-4o-mini (hızlı ve ucuz versiyon)
+      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: "json_object" }
     });
@@ -275,7 +285,7 @@ app.get('/admin', adminAuth, (req, res) => {
             tbody.appendChild(tr);
           });
 
-          // Stats hesapla (tüm users fetch etmeden, filtered'dan değil - tüm için ayrı fetch)
+          // Stats hesapla
           const allResponse = await fetch('/admin/users');
           const allUsers = await allResponse.json();
           const freeCount = allUsers.filter(u => u.plan === 'free').length;
