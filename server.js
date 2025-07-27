@@ -3,31 +3,58 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const Stripe = require('stripe');
 const OpenAI = require('openai');
 const axios = require('axios');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+const basicAuth = require('basic-auth');
 
 dotenv.config();
 const app = express();
 app.use(express.json());
-app.use(cors()); // CORS'u etkinleştir
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: 'Too many requests, please try again later.'
+});
+app.use('/api/generate-faq', limiter);
 
 mongoose.connect(process.env.MONGO_URI);
 
 const UserSchema = new mongoose.Schema({
   email: String,
-  credits: { type: Number, default: 400 },
+  credits: { type: Number, default: 20 },
   lastReset: { type: Date, default: Date.now },
   plan: { type: String, default: 'free' },
   expirationDate: { type: Date, default: null }
 });
 const User = mongoose.model('User', UserSchema);
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const openai = new OpenAI({ 
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: 'https://api.deepseek.com'
+});
 const JWT_SECRET = process.env.JWT_SECRET;
 const SERPAPI_KEY = process.env.SERPAPI_KEY;
+const ADMIN_USER = process.env.ADMIN_USER;
+const ADMIN_PASS = process.env.ADMIN_PASS;
+
+// Basic Auth Middleware for Admin
+function adminAuth(req, res, next) {
+  const user = basicAuth(req);
+  if (!user || user.name !== ADMIN_USER || user.pass !== ADMIN_PASS) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Admin"');
+    return res.status(401).send('Unauthorized');
+  }
+  next();
+}
 
 // Middleware: Token Doğrula
 function authenticate(req, res, next) {
@@ -42,15 +69,40 @@ function authenticate(req, res, next) {
   }
 }
 
+// Helper: Pro Expiration Kontrolü ve Downgrade
+async function checkProExpiration(user) {
+  const now = new Date();
+  if (user.plan === 'pro' && user.expirationDate && user.expirationDate < now) {
+    user.plan = 'free';
+    user.credits = 20;
+    user.lastReset = now;
+    user.expirationDate = null;
+    await user.save();
+  }
+}
+
+// Helper: Aylık Reset Kontrolü
+async function resetCreditsIfNeeded(user) {
+  const now = new Date();
+  if (now.getMonth() !== user.lastReset.getMonth() || now.getFullYear() !== user.lastReset.getFullYear()) {
+    user.credits = user.plan === 'pro' ? 120 : 20;
+    user.lastReset = now;
+    await user.save();
+  }
+}
+
 // Kayıt Endpoint
 app.post('/register', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
-  const existing = await User.findOne({ email });
-  if (existing) return res.status(400).json({ error: 'User exists' });
-  const user = new User({ email });
+  let user = await User.findOne({ email });
+  if (user) {
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
+    return res.json({ token });
+  }
+  user = new User({ email });
   await user.save();
-  const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '1y' });
+  const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token });
 });
 
@@ -59,23 +111,18 @@ app.get('/user-info', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
+  await checkProExpiration(user);
+  await resetCreditsIfNeeded(user);
+
   const now = new Date();
   let remainingDays = 0;
   if (user.plan === 'pro' && user.expirationDate) {
     remainingDays = Math.max(0, Math.ceil((user.expirationDate - now) / (1000 * 60 * 60 * 24)));
   }
 
-  if (user.plan === 'free') {
-    if (now.getMonth() !== user.lastReset.getMonth() || now.getFullYear() !== user.lastReset.getFullYear()) {
-      user.credits = 400;
-      user.lastReset = now;
-      await user.save();
-    }
-  }
-
   res.json({
     plan: user.plan === 'free' ? 'Ücretsiz Sürüm' : 'Pro Sürüm',
-    credits: user.plan === 'pro' ? 'Sınırsız' : user.credits,
+    credits: user.credits,
     remainingDays: remainingDays
   });
 });
@@ -85,16 +132,11 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  if (user.plan === 'free') {
-    const now = new Date();
-    if (now.getMonth() !== user.lastReset.getMonth() || now.getFullYear() !== user.lastReset.getFullYear()) {
-      user.credits = 400;
-      user.lastReset = now;
-      await user.save();
-    }
-    if (user.credits <= 0) {
-      return res.status(402).json({ error: 'no_credits' });
-    }
+  await checkProExpiration(user);
+  await resetCreditsIfNeeded(user);
+
+  if (user.credits <= 0) {
+    return res.status(402).json({ error: 'no_credits' });
   }
 
   const { title, num_questions } = req.body;
@@ -120,115 +162,148 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'deepseek-chat', // DeepSeek chat modeli
       messages: [{ role: 'user', content: prompt }],
+      response_format: { type: "json_object" }
     });
-    const faqs = JSON.parse(completion.choices[0].message.content).faqs;
-
-    if (user.plan === 'free') {
-      user.credits -= 1;
-      await user.save();
+    let content = completion.choices[0].message.content;
+    let faqs;
+    try {
+      faqs = JSON.parse(content).faqs;
+    } catch (parseErr) {
+      console.error('JSON parse error:', parseErr, content);
+      return res.status(500).json({ error: 'AI response parse failed' });
     }
+
+    user.credits -= 1;
+    await user.save();
 
     res.json({ faqs });
   } catch (err) {
+    console.error('DeepSeek error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Kredi Satın Al
-app.post('/buy-credits', authenticate, async (req, res) => {
-  const { amount, return_url } = req.body;
-  const baseUrl = process.env.VERCEL_URL || 'http://localhost:3000';
-  const encodedReturnUrl = encodeURIComponent(return_url || `${baseUrl}/success`);
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ['card'],
-    line_items: [{
-      price_data: {
-        currency: 'usd',
-        product_data: { name: `${amount} Credits` },
-        unit_amount: 500,
-      },
-      quantity: 1,
-    }],
-    mode: 'payment',
-    success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&return_url=${encodedReturnUrl}`,
-    cancel_url: `${baseUrl}/cancel?return_url=${encodedReturnUrl}`,
-    metadata: { userId: req.userId.toString(), type: 'credits', amount }
-  });
-  res.json({ id: session.id });
+// Admin Users Endpoint (with search and plan filter)
+app.get('/admin/users', adminAuth, async (req, res) => {
+  const { search, plan } = req.query;
+  let query = {};
+  if (plan && plan !== 'all') query.plan = plan;
+  if (search) query.email = { $regex: search, $options: 'i' }; // Email search, case-insensitive
+  const users = await User.find(query, 'email plan credits expirationDate lastReset');
+  res.json(users);
 });
 
-// Pro Üyelik Yükselt
-app.post('/upgrade-pro', authenticate, async (req, res) => {
-  const { return_url } = req.body;
-  const baseUrl = process.env.VERCEL_URL || 'http://localhost:3000';
-  const encodedReturnUrl = encodeURIComponent(return_url || `${baseUrl}/success`);
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ['card'],
-    line_items: [{
-      price_data: {
-        currency: 'usd',
-        product_data: { name: 'Pro Üyelik (1 Ay)' },
-        unit_amount: 1000,
-      },
-      quantity: 1,
-    }],
-    mode: 'payment',
-    success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}&return_url=${encodedReturnUrl}`,
-    cancel_url: `${baseUrl}/cancel?return_url=${encodedReturnUrl}`,
-    metadata: { userId: req.userId.toString(), type: 'pro' }
-  });
-  res.json({ id: session.id });
+// Admin Update User Endpoint
+app.post('/admin/update-user', adminAuth, async (req, res) => {
+  const { userId, plan, credits, expirationDate } = req.body;
+  const user = await User.findById(userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  if (plan) user.plan = plan;
+  if (credits !== undefined) user.credits = credits;
+  if (expirationDate) user.expirationDate = new Date(expirationDate);
+  await user.save();
+
+  res.json({ success: true });
 });
 
-// Stripe Webhook
-app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
+// Admin Panel HTML Page
+app.get('/admin', adminAuth, (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Admin Panel - AI FAQ Users</title>
+      <style>
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; }
+        th { background-color: #f2f2f2; }
+        button { margin-left: 10px; }
+        #controls { margin-bottom: 20px; }
+      </style>
+    </head>
+    <body>
+      <h1>Kullanıcı Yönetimi</h1>
+      <div id="controls">
+        <input type="text" id="searchInput" placeholder="Email ile ara">
+        <select id="planFilter">
+          <option value="all">Tümü</option>
+          <option value="free">Free</option>
+          <option value="pro">Pro (Aktif)</option>
+        </select>
+        <button onclick="loadUsers()">Ara/Filtrele</button>
+      </div>
+      <div id="stats"></div>
+      <table id="usersTable">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Plan</th>
+            <th>Credits</th>
+            <th>Expiration Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const userId = session.metadata.userId;
-    const user = await User.findById(userId);
-    if (user) {
-      if (session.metadata.type === 'credits') {
-        user.credits += parseInt(session.metadata.amount);
-      } else if (session.metadata.type === 'pro') {
-        user.plan = 'pro';
-        user.expirationDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-        user.credits = -1;
-      }
-      await user.save();
-    }
-  }
-  res.json({ received: true });
+      <script>
+        async function loadUsers() {
+          const search = document.getElementById('searchInput').value;
+          const plan = document.getElementById('planFilter').value;
+          const url = \`/admin/users?search=\${encodeURIComponent(search)}&plan=\${plan}\`;
+          const response = await fetch(url);
+          const users = await response.json();
+          const tbody = document.querySelector('#usersTable tbody');
+          tbody.innerHTML = '';
+          users.forEach(user => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = \`
+              <td>\${user.email}</td>
+              <td>\${user.plan}</td>
+              <td>\${user.credits}</td>
+              <td>\${user.expirationDate ? new Date(user.expirationDate).toLocaleDateString() : 'N/A'}</td>
+              <td>
+                <button onclick="editUser('\${user._id}')">Düzenle</button>
+              </td>
+            \`;
+            tbody.appendChild(tr);
+          });
+
+          // Stats hesapla (tüm users fetch etmeden, filtered'dan değil - tüm için ayrı fetch)
+          const allResponse = await fetch('/admin/users');
+          const allUsers = await allResponse.json();
+          const freeCount = allUsers.filter(u => u.plan === 'free').length;
+          const proCount = allUsers.filter(u => u.plan === 'pro').length;
+          document.getElementById('stats').innerHTML = \`<p><strong>Toplam Free Kullanıcı: \${freeCount}</strong> | <strong>Toplam Pro Kullanıcı: \${proCount}</strong></p>\`;
+        }
+
+        async function editUser(userId) {
+          const plan = prompt('Yeni Plan (free/pro):');
+          const credits = prompt('Yeni Credits:');
+          const expiration = prompt('Yeni Expiration Date (YYYY-MM-DD):');
+          
+          const response = await fetch('/admin/update-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, plan, credits: parseInt(credits), expirationDate: expiration })
+          });
+          if (response.ok) {
+            alert('Güncellendi!');
+            loadUsers();
+          } else {
+            alert('Hata!');
+          }
+        }
+
+        loadUsers(); // İlk yükleme
+      </script>
+    </body>
+    </html>
+  `);
 });
 
-// Success Route
-app.get('/success', async (req, res) => {
-  const returnUrl = req.query.return_url ? decodeURIComponent(req.query.return_url) : null;
-  if (returnUrl) {
-    res.redirect(returnUrl);
-  } else {
-    res.send('<h1>Ödeme Başarılı! Krediniz veya üyeliğiniz eklendi. Lütfen WordPress admin panelinize dönün ve ayarlar sayfasını yenileyin.</h1>');
-  }
-});
-
-// Cancel Route
-app.get('/cancel', (req, res) => {
-  const returnUrl = req.query.return_url ? decodeURIComponent(req.query.return_url) : null;
-  if (returnUrl) {
-    res.redirect(returnUrl);
-  } else {
-    res.send('<h1>Ödeme İptal Edildi. Lütfen tekrar deneyin veya WordPress admin panelinize dönün.</h1>');
-  }
-});
-
-// Vercel için export (serverless)
+// Vercel için export
 module.exports = app;
