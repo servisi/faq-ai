@@ -38,11 +38,10 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 const openai = new OpenAI({ 
-  apiKey: process.env.DEEPSEEK_API_KEY,
-  baseURL: 'https://api.deepseek.com'
+  apiKey: process.env.OPENAI_API_KEY, // Değiştirildi: DEEPSEEK_API_KEY yerine OPENAI_API_KEY
 });
 const JWT_SECRET = process.env.JWT_SECRET;
-const SERPER_API_KEY = process.env.SERPER_API_KEY; // Değiştirildi: SERPAPI_KEY yerine SERPER_API_KEY
+const SERPER_API_KEY = process.env.SERPER_API_KEY;
 const ADMIN_USER = process.env.ADMIN_USER;
 const ADMIN_PASS = process.env.ADMIN_PASS;
 
@@ -166,7 +165,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: 'deepseek-chat', // DeepSeek chat modeli
+      model: 'gpt-4o-mini', // Değiştirildi: deepseek-chat yerine gpt-4o-mini (hızlı ve ucuz versiyon)
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: "json_object" }
     });
@@ -184,7 +183,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
     res.json({ faqs });
   } catch (err) {
-    console.error('DeepSeek error:', err);
+    console.error('OpenAI error:', err);
     res.status(500).json({ error: err.message });
   }
 });
