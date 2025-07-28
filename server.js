@@ -8,6 +8,8 @@ const axios = require('axios');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const basicAuth = require('basic-auth');
+const fs = require('fs');
+const path = require('path');
 
 dotenv.config();
 const app = express();
@@ -89,6 +91,65 @@ async function resetCreditsIfNeeded(user) {
     await user.save();
   }
 }
+
+// === WORDPRESS GÜNCELLEME ENDPOİNTLERİ === //
+
+// Plugin versiyon bilgisi
+const PLUGIN_VERSION = {
+  version: '2.8', // Yeni versiyon
+  tested: '6.4',
+  last_updated: '2025-01-28',
+  download_url: 'https://faq-ai-chi.vercel.app/download/sss-ai-v2.8.zip',
+  description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem. Otomatik güncelleme özelliği ile her zaman güncel kalın.',
+  changelog: `
+    <h4>Versiyon 2.8</h4>
+    <ul>
+      <li>Otomatik güncelleme sistemi eklendi</li>
+      <li>CSS dosyası eklenti içine gömüldü</li>
+      <li>Güncelleme bildirimleri ve kontrol butonu eklendi</li>
+      <li>Performans iyileştirmeleri</li>
+      <li>Hata düzeltmeleri</li>
+    </ul>
+    <h4>Versiyon 2.7</h4>
+    <ul>
+      <li>Manuel yenileme meta box eklendi</li>
+      <li>Çok dilli destek geliştirildi</li>
+      <li>UI/UX iyileştirmeleri</li>
+    </ul>
+  `
+};
+
+// WordPress güncelleme kontrolü endpoint'i
+app.get('/wp-update-check', (req, res) => {
+  const { action, plugin } = req.query;
+  
+  if (action === 'get_version' && plugin === 'sss-ai') {
+    res.json(PLUGIN_VERSION);
+  } else {
+    res.status(404).json({ error: 'Invalid request' });
+  }
+});
+
+// Plugin dosyası indirme endpoint'i (sadece admin)
+app.get('/download/sss-ai-v2.8.zip', adminAuth, (req, res) => {
+  // Bu endpoint'i gerçek plugin zip dosyasını serve etmek için kullanabilirsiniz
+  // Şimdilik placeholder response
+  res.json({
+    message: 'Plugin download would be served here',
+    note: 'Bu endpoint gerçek plugin zip dosyasını serve etmek için kullanılacak'
+  });
+});
+
+// Plugin changelog endpoint'i
+app.get('/changelog/sss-ai', (req, res) => {
+  res.json({
+    plugin: 'SSS Oluşturucu',
+    current_version: PLUGIN_VERSION.version,
+    changelog: PLUGIN_VERSION.changelog
+  });
+});
+
+// === MEVCUT ENDPOİNTLER === //
 
 // Kayıt Endpoint
 app.post('/register', async (req, res) => {
@@ -198,24 +259,6 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   }
 });
 
-// Update Info Endpoint
-app.get('/update-info', (req, res) => {
-  res.json({
-    name: 'SSS Oluşturucu',
-    slug: 'sss-olusturucu',
-    version: '2.8', // Yeni versiyonu buraya yaz (örneğin 2.8)
-    author: 'Publicus',
-    download_url: 'https://publicus.com.tr/ai-oto-faq-generator.zip', // Yeni ZIP dosyasının URL'si (sen yükle)
-    tested: '6.6', // WP versiyonu
-    requires: '5.0',
-    sections: {
-      description: 'Güncelleme açıklaması burada.',
-      changelog: 'Değişiklikler: Manuel yenileme eklendi.'
-    }
-  });
-});
-
-
 // Admin Users Endpoint (with search and plan filter)
 app.get('/admin/users', adminAuth, async (req, res) => {
   const { search, plan } = req.query;
@@ -240,13 +283,58 @@ app.post('/admin/update-user', adminAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-// Admin Panel HTML Page
+// Plugin istatistikleri endpoint'i (admin)
+app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const freeUsers = await User.countDocuments({ plan: 'free' });
+    const proUsers = await User.countDocuments({ plan: 'pro' });
+    const activeUsers = await User.countDocuments({ credits: { $gt: 0 } });
+
+    res.json({
+      total_users: totalUsers,
+      free_users: freeUsers,
+      pro_users: proUsers,
+      active_users: activeUsers,
+      plugin_version: PLUGIN_VERSION.version,
+      last_updated: PLUGIN_VERSION.last_updated
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Statistics fetch failed', details: error.message });
+  }
+});
+
+// Plugin versiyonunu güncelleme endpoint'i (admin only)
+app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
+  const { version, tested, description, changelog, download_url } = req.body;
+  
+  if (!version) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
+
+  // Plugin versiyon bilgilerini güncelle
+  if (version) PLUGIN_VERSION.version = version;
+  if (tested) PLUGIN_VERSION.tested = tested;
+  if (description) PLUGIN_VERSION.description = description;
+  if (changelog) PLUGIN_VERSION.changelog = changelog;
+  if (download_url) PLUGIN_VERSION.download_url = download_url;
+  
+  PLUGIN_VERSION.last_updated = new Date().toISOString().split('T')[0];
+
+  res.json({
+    success: true,
+    message: 'Plugin version updated successfully',
+    updated_version: PLUGIN_VERSION
+  });
+});
+
+// Admin Panel HTML Page (güncellenmiş versiyon)
 app.get('/admin', adminAuth, (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html lang="tr">
     <head>
-      <title>Admin Panel - AI FAQ Users</title>
+      <title>Admin Panel - AI FAQ Users & Plugin Management</title>
       <style>
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -262,6 +350,65 @@ app.get('/admin', adminAuth, (req, res) => {
           font-size: 2em;
           text-align: center;
         }
+        
+        /* Tab System */
+        .tab-container {
+          margin-bottom: 30px;
+        }
+        .tabs {
+          display: flex;
+          background-color: white;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .tab {
+          flex: 1;
+          padding: 15px 20px;
+          background-color: #f8f9fa;
+          border: none;
+          cursor: pointer;
+          font-size: 16px;
+          transition: background-color 0.3s;
+        }
+        .tab:hover {
+          background-color: #e9ecef;
+        }
+        .tab.active {
+          background-color: #007bff;
+          color: white;
+        }
+        .tab-content {
+          display: none;
+        }
+        .tab-content.active {
+          display: block;
+        }
+
+        /* Plugin Stats Card */
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 20px;
+          margin-bottom: 30px;
+        }
+        .stat-card {
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          text-align: center;
+        }
+        .stat-number {
+          font-size: 2em;
+          font-weight: bold;
+          color: #007bff;
+        }
+        .stat-label {
+          color: #666;
+          margin-top: 5px;
+        }
+
         #controls {
           display: flex;
           flex-wrap: wrap;
@@ -338,6 +485,35 @@ app.get('/admin', adminAuth, (req, res) => {
         td button:hover {
           background-color: #218838;
         }
+        
+        /* Plugin Management Form */
+        .plugin-form {
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          margin-bottom: 20px;
+        }
+        .form-group {
+          margin-bottom: 20px;
+        }
+        .form-group label {
+          display: block;
+          margin-bottom: 5px;
+          font-weight: bold;
+        }
+        .form-group input, .form-group textarea {
+          width: 100%;
+          padding: 10px;
+          border: 1px solid #ced4da;
+          border-radius: 4px;
+          box-sizing: border-box;
+        }
+        .form-group textarea {
+          height: 120px;
+          resize: vertical;
+        }
+
         /* Modal Stilleri */
         .modal {
           display: none;
@@ -387,6 +563,7 @@ app.get('/admin', adminAuth, (req, res) => {
         .modal-content .submit-btn:hover {
           background-color: #218838;
         }
+        
         /* Responsive tasarım */
         @media (max-width: 768px) {
           #controls {
@@ -395,33 +572,89 @@ app.get('/admin', adminAuth, (req, res) => {
           .modal-content {
             width: 95%;
           }
+          .stats-grid {
+            grid-template-columns: 1fr;
+          }
         }
       </style>
     </head>
     <body>
-      <h1>Kullanıcı Yönetimi</h1>
-      <div id="controls">
-        <input type="text" id="searchInput" placeholder="Email ile ara">
-        <select id="planFilter">
-          <option value="all">Tümü</option>
-          <option value="free">Free</option>
-          <option value="pro">Pro (Aktif)</option>
-        </select>
-        <button onclick="loadUsers()">Ara/Filtrele</button>
+      <h1>AI FAQ Admin Panel</h1>
+      
+      <!-- Tab Navigation -->
+      <div class="tab-container">
+        <div class="tabs">
+          <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
+          <button class="tab" onclick="showTab('plugin')">Plugin Yönetimi</button>
+          <button class="tab" onclick="showTab('stats')">İstatistikler</button>
+        </div>
       </div>
-      <div id="stats"></div>
-      <table id="usersTable">
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Plan</th>
-            <th>Credits</th>
-            <th>Expiration Date</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+
+      <!-- Users Tab -->
+      <div id="users-tab" class="tab-content active">
+        <h2>Kullanıcı Yönetimi</h2>
+        <div id="controls">
+          <input type="text" id="searchInput" placeholder="Email ile ara">
+          <select id="planFilter">
+            <option value="all">Tümü</option>
+            <option value="free">Free</option>
+            <option value="pro">Pro (Aktif)</option>
+          </select>
+          <button onclick="loadUsers()">Ara/Filtrele</button>
+        </div>
+        <div id="stats"></div>
+        <table id="usersTable">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Plan</th>
+              <th>Credits</th>
+              <th>Expiration Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Plugin Management Tab -->
+      <div id="plugin-tab" class="tab-content">
+        <h2>Plugin Sürüm Yönetimi</h2>
+        <div class="plugin-form">
+          <form id="pluginVersionForm">
+            <div class="form-group">
+              <label for="pluginVersion">Plugin Versiyonu</label>
+              <input type="text" id="pluginVersion" placeholder="örn: 2.8" required>
+            </div>
+            <div class="form-group">
+              <label for="pluginTested">Test Edildiği WordPress Versiyonu</label>
+              <input type="text" id="pluginTested" placeholder="örn: 6.4" required>
+            </div>
+            <div class="form-group">
+              <label for="pluginDescription">Açıklama</label>
+              <textarea id="pluginDescription" placeholder="Plugin açıklaması..."></textarea>
+            </div>
+            <div class="form-group">
+              <label for="pluginChangelog">Changelog (HTML formatında)</label>
+              <textarea id="pluginChangelog" placeholder="<h4>Versiyon X.X</h4><ul><li>Yeni özellik</li></ul>"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="pluginDownloadUrl">İndirme URL'si</label>
+              <input type="url" id="pluginDownloadUrl" placeholder="https://example.com/plugin.zip">
+            </div>
+            <button type="submit">Plugin Versiyonunu Güncelle</button>
+          </form>
+        </div>
+        <div id="pluginUpdateResult"></div>
+      </div>
+
+      <!-- Stats Tab -->
+      <div id="stats-tab" class="tab-content">
+        <h2>Genel İstatistikler</h2>
+        <div class="stats-grid" id="statsGrid">
+          <!-- Stats will be loaded here -->
+        </div>
+      </div>
 
       <!-- Modal -->
       <div id="editModal" class="modal">
@@ -445,6 +678,114 @@ app.get('/admin', adminAuth, (req, res) => {
 
       <script>
         let currentUserId = null;
+
+        // Tab switching
+        function showTab(tabName) {
+          // Hide all tab contents
+          document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+          });
+          // Remove active class from all tabs
+          document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+          });
+          // Show selected tab content
+          document.getElementById(tabName + '-tab').classList.add('active');
+          // Add active class to clicked tab
+          event.target.classList.add('active');
+          
+          // Load data for specific tabs
+          if (tabName === 'users') {
+            loadUsers();
+          } else if (tabName === 'stats') {
+            loadStats();
+          }
+        }
+
+        // Load plugin statistics
+        async function loadStats() {
+          try {
+            const response = await fetch('/admin/plugin-stats');
+            if (!response.ok) throw new Error('Stats yükleme hatası');
+            const stats = await response.json();
+            
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = \`
+              <div class="stat-card">
+                <div class="stat-number">\${stats.total_users}</div>
+                <div class="stat-label">Toplam Kullanıcı</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-number">\${stats.free_users}</div>
+                <div class="stat-label">Free Kullanıcılar</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-number">\${stats.pro_users}</div>
+                <div class="stat-label">Pro Kullanıcılar</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-number">\${stats.active_users}</div>
+                <div class="stat-label">Aktif Kullanıcılar</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-number">v\${stats.plugin_version}</div>
+                <div class="stat-label">Mevcut Plugin Versiyonu</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-number">\${stats.last_updated}</div>
+                <div class="stat-label">Son Güncelleme</div>
+              </div>
+            \`;
+          } catch (error) {
+            console.error('Stats yükleme hatası:', error);
+          }
+        }
+
+        // Plugin version update
+        document.getElementById('pluginVersionForm').addEventListener('submit', async function(e) {
+          e.preventDefault();
+          
+          const formData = {
+            version: document.getElementById('pluginVersion').value,
+            tested: document.getElementById('pluginTested').value,
+            description: document.getElementById('pluginDescription').value,
+            changelog: document.getElementById('pluginChangelog').value,
+            download_url: document.getElementById('pluginDownloadUrl').value
+          };
+
+          try {
+            const response = await fetch('/admin/update-plugin-version', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(formData)
+            });
+            
+            const result = await response.json();
+            const resultDiv = document.getElementById('pluginUpdateResult');
+            
+            if (response.ok) {
+              resultDiv.innerHTML = \`
+                <div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">
+                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v\${result.updated_version.version}
+                </div>
+              \`;
+              // Form'u temizle
+              document.getElementById('pluginVersionForm').reset();
+            } else {
+              resultDiv.innerHTML = \`
+                <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
+                  <strong>Hata:</strong> \${result.error}
+                </div>
+              \`;
+            }
+          } catch (error) {
+            document.getElementById('pluginUpdateResult').innerHTML = \`
+              <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
+                <strong>Hata:</strong> \${error.message}
+              </div>
+            \`;
+          }
+        });
 
         // Kullanıcıları yükleme fonksiyonu
         async function loadUsers() {
