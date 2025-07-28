@@ -232,73 +232,150 @@ app.get('/admin', adminAuth, (req, res) => {
       <style>
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          background-color: #f8f9fa;
+          background-color: #f4f6f9;
           margin: 0;
-          padding: 20px;
+          padding: 30px;
           color: #333;
+          line-height: 1.6;
         }
         h1 {
           color: #007bff;
-          margin-bottom: 20px;
+          margin-bottom: 30px;
+          font-size: 2em;
+          text-align: center;
         }
         #controls {
           display: flex;
-          gap: 10px;
-          margin-bottom: 20px;
-          align-items: center;
+          flex-wrap: wrap;
+          gap: 15px;
+          margin-bottom: 30px;
+          justify-content: center;
         }
         input, select {
-          padding: 10px;
+          padding: 12px;
           border: 1px solid #ced4da;
-          border-radius: 4px;
-          flex: 1;
+          border-radius: 6px;
+          flex: 1 1 200px;
+          font-size: 1em;
+          transition: border-color 0.3s;
+        }
+        input:focus, select:focus {
+          border-color: #007bff;
+          outline: none;
         }
         button {
-          padding: 10px 15px;
+          padding: 12px 20px;
           background-color: #007bff;
           color: white;
           border: none;
-          border-radius: 4px;
+          border-radius: 6px;
           cursor: pointer;
-          transition: background-color 0.3s;
+          font-size: 1em;
+          transition: background-color 0.3s, transform 0.2s;
         }
         button:hover {
           background-color: #0056b3;
+          transform: translateY(-2px);
         }
         #stats {
-          margin-bottom: 20px;
-          padding: 10px;
+          margin-bottom: 30px;
+          padding: 15px;
           background-color: #e9ecef;
-          border-radius: 4px;
+          border-radius: 8px;
+          text-align: center;
+          font-weight: bold;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         table {
           width: 100%;
-          border-collapse: collapse;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+          border-collapse: separate;
+          border-spacing: 0;
+          background-color: white;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         th, td {
-          padding: 12px;
+          padding: 15px;
           text-align: left;
           border-bottom: 1px solid #dee2e6;
         }
         th {
           background-color: #007bff;
           color: white;
+          font-weight: bold;
+        }
+        tr:last-child td {
+          border-bottom: none;
         }
         tr:hover {
           background-color: #f1f3f5;
         }
         td button {
           background-color: #28a745;
-          margin: 0;
+          padding: 8px 12px;
+          font-size: 0.9em;
+          border-radius: 4px;
         }
         td button:hover {
           background-color: #218838;
         }
-        /* Responsive tasarım için medya sorgusu */
+        /* Modal Stilleri */
+        .modal {
+          display: none;
+          position: fixed;
+          z-index: 1000;
+          left: 0;
+          top: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0,0,0,0.5);
+          justify-content: center;
+          align-items: center;
+        }
+        .modal-content {
+          background-color: white;
+          padding: 30px;
+          border-radius: 8px;
+          width: 90%;
+          max-width: 500px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .modal-content h2 {
+          margin-top: 0;
+          color: #007bff;
+        }
+        .modal-content label {
+          display: block;
+          margin-bottom: 10px;
+          font-weight: bold;
+        }
+        .modal-content input, .modal-content select {
+          width: 100%;
+          margin-bottom: 20px;
+        }
+        .modal-content button {
+          width: 48%;
+        }
+        .modal-content .close-btn {
+          background-color: #dc3545;
+        }
+        .modal-content .close-btn:hover {
+          background-color: #c82333;
+        }
+        .modal-content .submit-btn {
+          background-color: #28a745;
+        }
+        .modal-content .submit-btn:hover {
+          background-color: #218838;
+        }
+        /* Responsive tasarım */
         @media (max-width: 768px) {
           #controls {
             flex-direction: column;
+          }
+          .modal-content {
+            width: 95%;
           }
         }
       </style>
@@ -328,7 +405,29 @@ app.get('/admin', adminAuth, (req, res) => {
         <tbody></tbody>
       </table>
 
+      <!-- Modal -->
+      <div id="editModal" class="modal">
+        <div class="modal-content">
+          <h2>Kullanıcı Düzenle</h2>
+          <form id="editForm">
+            <label for="editPlan">Plan:</label>
+            <select id="editPlan">
+              <option value="free">Free</option>
+              <option value="pro">Pro</option>
+            </select>
+            <label for="editCredits">Credits:</label>
+            <input type="number" id="editCredits" min="0">
+            <label for="editExpiration">Expiration Date (YYYY-MM-DD):</label>
+            <input type="date" id="editExpiration">
+            <button type="button" class="submit-btn" onclick="submitEdit()">Güncelle</button>
+            <button type="button" class="close-btn" onclick="closeModal()">İptal</button>
+          </form>
+        </div>
+      </div>
+
       <script>
+        let currentUserId = null;
+
         // Kullanıcıları yükleme fonksiyonu
         async function loadUsers() {
           try {
@@ -349,7 +448,7 @@ app.get('/admin', adminAuth, (req, res) => {
                 '<td>' + user.credits + '</td>' +
                 '<td>' + (user.expirationDate ? new Date(user.expirationDate).toLocaleDateString('tr-TR') : 'N/A') + '</td>' +
                 '<td>' +
-                  '<button onclick="editUser(\\'' + user._id + '\\')">Düzenle</button>' +
+                  '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
                 '</td>';
               tbody.appendChild(tr);
             });
@@ -362,7 +461,7 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // İstatistikleri güncelleme fonksiyonu (ayrı tutarak yönetilebilirliği artırdım)
+        // İstatistikleri güncelleme fonksiyonu
         async function updateStats() {
           try {
             const response = await fetch('/admin/users');
@@ -376,21 +475,36 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // Kullanıcı düzenleme fonksiyonu
-        async function editUser(userId) {
-          const plan = prompt('Yeni Plan (free/pro):', 'pro'); // Varsayılan değer ekledim
-          const credits = prompt('Yeni Credits:', '0');
-          const expiration = prompt('Yeni Expiration Date (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
+        // Modal açma
+        function openModal(userId, plan, credits, expiration) {
+          currentUserId = userId;
+          document.getElementById('editPlan').value = plan;
+          document.getElementById('editCredits').value = credits;
+          document.getElementById('editExpiration').value = expiration;
+          document.getElementById('editModal').style.display = 'flex';
+        }
+
+        // Modal kapama
+        function closeModal() {
+          document.getElementById('editModal').style.display = 'none';
+        }
+
+        // Düzenleme gönderme
+        async function submitEdit() {
+          const plan = document.getElementById('editPlan').value;
+          const credits = parseInt(document.getElementById('editCredits').value);
+          const expiration = document.getElementById('editExpiration').value;
           
-          if (plan && credits && expiration) {
+          if (plan && !isNaN(credits) && expiration) {
             try {
               const response = await fetch('/admin/update-user', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, plan, credits: parseInt(credits), expirationDate: expiration })
+                body: JSON.stringify({ userId: currentUserId, plan, credits, expirationDate: expiration })
               });
               if (response.ok) {
                 alert('Güncellendi!');
+                closeModal();
                 loadUsers();
               } else {
                 throw new Error('Güncelleme hatası');
@@ -400,12 +514,20 @@ app.get('/admin', adminAuth, (req, res) => {
               alert('Güncelleme sırasında bir hata oluştu!');
             }
           } else {
-            alert('İşlem iptal edildi.');
+            alert('Tüm alanları doldurun.');
           }
         }
 
         // İlk yükleme
         loadUsers();
+
+        // Modal dışına tıklayınca kapatma
+        window.onclick = function(event) {
+          const modal = document.getElementById('editModal');
+          if (event.target === modal) {
+            closeModal();
+          }
+        }
       </script>
     </body>
     </html>
