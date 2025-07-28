@@ -35,7 +35,10 @@ const UserSchema = new mongoose.Schema({
   credits: { type: Number, default: 20 },
   lastReset: { type: Date, default: Date.now },
   plan: { type: String, default: 'free' },
-  expirationDate: { type: Date, default: null }
+  expirationDate: { type: Date, default: null },
+  createdAt: { type: Date, default: Date.now },   // Yeni alan
+  deletedAt: { type: Date, default: null },      // Yeni alan
+  deactivatedAt: { type: Date, default: null }   // Yeni alan
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -165,24 +168,7 @@ app.get('/wp-update-check', async (req, res) => {
 
 // Plugin dosyası indirme endpoint'i (PUBLIC - WordPress için)
 app.get('/download/sss-ai.zip', (req, res) => {
-  // Bu endpoint'i gerçek plugin zip dosyasını serve etmek için kullanabilirsiniz
-  // Şimdilik placeholder response - gerçek zip dosyasını buraya koyun
-  
-  // Örnek: Gerçek dosya servisi
-  // const filePath = path.join(__dirname, 'files', 'sss-ai-v2.8.zip');
-  // if (fs.existsSync(filePath)) {
-  //   res.download(filePath, 'sss-ai-v2.8.zip');
-  // } else {
-  //   res.status(404).json({ error: 'File not found' });
-  // }
-  
-  // Geçici çözüm: Redirect to GitHub or your file server
   res.redirect('https://github.com/servisi/faq-ai/releases/download/sss-ai.zip');
-  
-  // Ya da doğrudan zip içeriği dönebilirsiniz (küçük dosyalar için)
-  // res.setHeader('Content-Type', 'application/zip');
-  // res.setHeader('Content-Disposition', 'attachment; filename="sss-ai.zip"');
-  // res.send(zipBuffer); // Zip dosyasının buffer'ı
 });
 
 // Admin-only download endpoint (eski versiyon, sadmin için)
@@ -209,23 +195,57 @@ app.get('/changelog/sss-ai', async (req, res) => {
 
 // Kayıt Endpoint
 app.post('/register', async (req, res) => {
-  const { email } = req.body;
+  const { email, phone, site } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
+  
   let user = await User.findOne({ email });
   if (user) {
+    // Hesap silinmişse yeniden aktif et
+    if (user.deletedAt) {
+      user.deletedAt = null;
+      await user.save();
+    }
+    
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
     return res.json({ token });
   }
-  user = new User({ email });
+  
+  user = new User({ 
+    email,
+    phone,
+    site,
+    createdAt: new Date()
+  });
+  
   await user.save();
   const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token });
+});
+
+// Kullanıcı Silme Endpoint'i
+app.post('/delete-account', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.deletedAt = new Date();
+    await user.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Account deletion failed' });
+  }
 });
 
 // User Info Endpoint
 app.get('/user-info', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
+
+  // Hesap silinmişse hata döndür
+  if (user.deletedAt) {
+    return res.status(401).json({ error: 'Account deleted' });
+  }
 
   await checkProExpiration(user);
   await resetCreditsIfNeeded(user);
@@ -239,7 +259,9 @@ app.get('/user-info', authenticate, async (req, res) => {
   res.json({
     plan: user.plan === 'free' ? 'Ücretsiz Sürüm' : 'Pro Sürüm',
     credits: user.credits,
-    remainingDays: remainingDays
+    remainingDays: remainingDays,
+    createdAt: user.createdAt,
+    deletedAt: user.deletedAt
   });
 });
 
@@ -247,6 +269,11 @@ app.get('/user-info', authenticate, async (req, res) => {
 app.post('/api/generate-faq', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
+
+  // Hesap silinmişse hata döndür
+  if (user.deletedAt) {
+    return res.status(401).json({ error: 'Account deleted' });
+  }
 
   await checkProExpiration(user);
   await resetCreditsIfNeeded(user);
@@ -321,7 +348,7 @@ app.get('/admin/users', adminAuth, async (req, res) => {
   let query = {};
   if (plan && plan !== 'all') query.plan = plan;
   if (search) query.email = { $regex: search, $options: 'i' }; // Email search, case-insensitive
-  const users = await User.find(query, 'email plan credits expirationDate lastReset');
+  const users = await User.find(query, 'email plan credits expirationDate lastReset createdAt deletedAt');
   res.json(users);
 });
 
@@ -345,7 +372,10 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
     const totalUsers = await User.countDocuments();
     const freeUsers = await User.countDocuments({ plan: 'free' });
     const proUsers = await User.countDocuments({ plan: 'pro' });
-    const activeUsers = await User.countDocuments({ credits: { $gt: 0 } });
+    const activeUsers = await User.countDocuments({ 
+      credits: { $gt: 0 },
+      deletedAt: null
+    });
     const pluginVersion = await getPluginVersion();
 
     res.json({
@@ -691,7 +721,8 @@ app.get('/admin', adminAuth, (req, res) => {
               <th>Email</th>
               <th>Plan</th>
               <th>Credits</th>
-              <th>Expiration Date</th>
+              <th>Oluşturulma</th>
+              <th>Silinme</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -882,12 +913,16 @@ app.get('/admin', adminAuth, (req, res) => {
             const tbody = document.querySelector('#usersTable tbody');
             tbody.innerHTML = '';
             users.forEach(user => {
+              const createdAt = user.createdAt ? new Date(user.createdAt).toLocaleDateString('tr-TR') : 'N/A';
+              const deletedAt = user.deletedAt ? new Date(user.deletedAt).toLocaleDateString('tr-TR') : 'Aktif';
+              
               const tr = document.createElement('tr');
               tr.innerHTML = 
                 '<td>' + user.email + '</td>' +
                 '<td>' + user.plan + '</td>' +
                 '<td>' + user.credits + '</td>' +
-                '<td>' + (user.expirationDate ? new Date(user.expirationDate).toLocaleDateString('tr-TR') : 'N/A') + '</td>' +
+                '<td>' + createdAt + '</td>' +
+                '<td>' + deletedAt + '</td>' +
                 '<td>' +
                   '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
                 '</td>';
@@ -977,4 +1012,3 @@ app.get('/admin', adminAuth, (req, res) => {
 
 // Vercel için export
 module.exports = app;
-            
