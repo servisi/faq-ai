@@ -225,79 +225,166 @@ app.post('/admin/update-user', adminAuth, async (req, res) => {
 // Admin Panel HTML Page
 app.get('/admin', adminAuth, (req, res) => {
   res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Admin Panel - AI FAQ Users</title>
-      <style>
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ddd; padding: 8px; }
-        th { background-color: #f2f2f2; }
-        button { margin-left: 10px; }
-        #controls { margin-bottom: 20px; }
-      </style>
-    </head>
-    <body>
-      <h1>Kullanıcı Yönetimi</h1>
-      <div id="controls">
-        <input type="text" id="searchInput" placeholder="Email ile ara">
-        <select id="planFilter">
-          <option value="all">Tümü</option>
-          <option value="free">Free</option>
-          <option value="pro">Pro (Aktif)</option>
-        </select>
-        <button onclick="loadUsers()">Ara/Filtrele</button>
-      </div>
-      <div id="stats"></div>
-      <table id="usersTable">
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Plan</th>
-            <th>Credits</th>
-            <th>Expiration Date</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+   <!DOCTYPE html>
+<html lang="tr">
+<head>
+  <title>Admin Panel - AI FAQ Users</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f8f9fa;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      color: #007bff;
+      margin-bottom: 20px;
+    }
+    #controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+    input, select {
+      padding: 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      flex: 1;
+    }
+    button {
+      padding: 10px 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #stats {
+      margin-bottom: 20px;
+      padding: 10px;
+      background-color: #e9ecef;
+      border-radius: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #dee2e6;
+    }
+    th {
+      background-color: #007bff;
+      color: white;
+    }
+    tr:hover {
+      background-color: #f1f3f5;
+    }
+    td button {
+      background-color: #28a745;
+      margin: 0;
+    }
+    td button:hover {
+      background-color: #218838;
+    }
+    /* Responsive tasarım için medya sorgusu */
+    @media (max-width: 768px) {
+      #controls {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Kullanıcı Yönetimi</h1>
+  <div id="controls">
+    <input type="text" id="searchInput" placeholder="Email ile ara">
+    <select id="planFilter">
+      <option value="all">Tümü</option>
+      <option value="free">Free</option>
+      <option value="pro">Pro (Aktif)</option>
+    </select>
+    <button onclick="loadUsers()">Ara/Filtrele</button>
+  </div>
+  <div id="stats"></div>
+  <table id="usersTable">
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Plan</th>
+        <th>Credits</th>
+        <th>Expiration Date</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-      <script>
-        async function loadUsers() {
-          const search = document.getElementById('searchInput').value;
-          const plan = document.getElementById('planFilter').value;
-          const url = \`/admin/users?search=\${encodeURIComponent(search)}&plan=\${plan}\`;
-          const response = await fetch(url);
-          const users = await response.json();
-          const tbody = document.querySelector('#usersTable tbody');
-          tbody.innerHTML = '';
-          users.forEach(user => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = \`
-              <td>\${user.email}</td>
-              <td>\${user.plan}</td>
-              <td>\${user.credits}</td>
-              <td>\${user.expirationDate ? new Date(user.expirationDate).toLocaleDateString() : 'N/A'}</td>
-              <td>
-                <button onclick="editUser('\${user._id}')">Düzenle</button>
-              </td>
-            \`;
-            tbody.appendChild(tr);
-          });
+  <script>
+    // Kullanıcıları yükleme fonksiyonu
+    async function loadUsers() {
+      try {
+        const search = document.getElementById('searchInput').value;
+        const plan = document.getElementById('planFilter').value;
+        const url = `/admin/users?search=${encodeURIComponent(search)}&plan=${plan}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Yükleme hatası');
+        const users = await response.json();
+        
+        const tbody = document.querySelector('#usersTable tbody');
+        tbody.innerHTML = '';
+        users.forEach(user => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${user.email}</td>
+            <td>${user.plan}</td>
+            <td>${user.credits}</td>
+            <td>${user.expirationDate ? new Date(user.expirationDate).toLocaleDateString('tr-TR') : 'N/A'}</td>
+            <td>
+              <button onclick="editUser('${user._id}')">Düzenle</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+        
+        // İstatistikleri güncelle
+        updateStats();
+      } catch (error) {
+        console.error('Hata:', error);
+        alert('Kullanıcılar yüklenirken bir hata oluştu.');
+      }
+    }
 
-          // Stats hesapla
-          const allResponse = await fetch('/admin/users');
-          const allUsers = await allResponse.json();
-          const freeCount = allUsers.filter(u => u.plan === 'free').length;
-          const proCount = allUsers.filter(u => u.plan === 'pro').length;
-          document.getElementById('stats').innerHTML = \`<p><strong>Toplam Free Kullanıcı: \${freeCount}</strong> | <strong>Toplam Pro Kullanıcı: \${proCount}</strong></p>\`;
-        }
+    // İstatistikleri güncelleme fonksiyonu (ayrı tutarak yönetilebilirliği artırdım)
+    async function updateStats() {
+      try {
+        const response = await fetch('/admin/users');
+        if (!response.ok) throw new Error('İstatistik hatası');
+        const allUsers = await response.json();
+        const freeCount = allUsers.filter(u => u.plan === 'free').length;
+        const proCount = allUsers.filter(u => u.plan === 'pro').length;
+        document.getElementById('stats').innerHTML = `<p><strong>Toplam Free Kullanıcı: ${freeCount}</strong> | <strong>Toplam Pro Kullanıcı: ${proCount}</strong></p>`;
+      } catch (error) {
+        console.error('Hata:', error);
+      }
+    }
 
-        async function editUser(userId) {
-          const plan = prompt('Yeni Plan (free/pro):');
-          const credits = prompt('Yeni Credits:');
-          const expiration = prompt('Yeni Expiration Date (YYYY-MM-DD):');
-          
+    // Kullanıcı düzenleme fonksiyonu
+    async function editUser(userId) {
+      const plan = prompt('Yeni Plan (free/pro):', 'pro'); // Varsayılan değer ekledim
+      const credits = prompt('Yeni Credits:', '0');
+      const expiration = prompt('Yeni Expiration Date (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
+      
+      if (plan && credits && expiration) {
+        try {
           const response = await fetch('/admin/update-user', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -307,14 +394,22 @@ app.get('/admin', adminAuth, (req, res) => {
             alert('Güncellendi!');
             loadUsers();
           } else {
-            alert('Hata!');
+            throw new Error('Güncelleme hatası');
           }
+        } catch (error) {
+          console.error('Hata:', error);
+          alert('Güncelleme sırasında bir hata oluştu!');
         }
+      } else {
+        alert('İşlem iptal edildi.');
+      }
+    }
 
-        loadUsers(); // İlk yükleme
-      </script>
-    </body>
-    </html>
+    // İlk yükleme
+    loadUsers();
+  </script>
+</body>
+</html>
   `);
 });
 
