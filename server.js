@@ -198,6 +198,24 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   }
 });
 
+// Update Info Endpoint
+app.get('/update-info', (req, res) => {
+  res.json({
+    name: 'SSS Oluşturucu',
+    slug: 'sss-olusturucu',
+    version: '2.8', // Yeni versiyonu buraya yaz (örneğin 2.8)
+    author: 'Publicus',
+    download_url: 'https://publicus.com.tr/ai-oto-faq-generator.zip', // Yeni ZIP dosyasının URL'si (sen yükle)
+    tested: '6.6', // WP versiyonu
+    requires: '5.0',
+    sections: {
+      description: 'Güncelleme açıklaması burada.',
+      changelog: 'Değişiklikler: Manuel yenileme eklendi.'
+    }
+  });
+});
+
+
 // Admin Users Endpoint (with search and plan filter)
 app.get('/admin/users', adminAuth, async (req, res) => {
   const { search, plan } = req.query;
