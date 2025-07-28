@@ -100,9 +100,9 @@ const PluginVersionSchema = new mongoose.Schema({
   version: { type: String, default: '3.0' },
   tested: { type: String, default: '6.8' },
   last_updated: { type: Date, default: Date.now },
-  download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip' },
+  download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/download/sss-ai.zip' },
   description: { type: String, default: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.' },
-  changelog: { type: String, default: '<h4>Versiyon 2.8</h4><ul><li>Otomatik güncelleme sistemi eklendi</li></ul>' }
+  changelog: { type: String, default: '<h4>Versiyon 3.0</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>' }
 });
 const PluginVersion = mongoose.model('PluginVersion', PluginVersionSchema);
 
@@ -116,7 +116,7 @@ async function getPluginVersion() {
         plugin_name: 'sss-ai',
         version: '3.0',
         tested: '6.8',
-        download_url: 'https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip',
+        download_url: 'https://github.com/servisi/faq-ai/releases/download/sss-ai.zip',
         description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem.',
         changelog: `
           <h4>Versiyon 3.0</h4>
@@ -135,7 +135,7 @@ async function getPluginVersion() {
       version: '3.0',
       tested: '6.8',
       last_updated: new Date().toISOString().split('T')[0],
-      download_url: 'https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip',
+      download_url: 'https://github.com/servisi/faq-ai/releases/download/sss-ai.zip',
       description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.',
       changelog: '<h4>Versiyon 2.8</h4><ul><li>Otomatik güncelleme sistemi</li></ul>'
     };
@@ -164,7 +164,7 @@ app.get('/wp-update-check', async (req, res) => {
 });
 
 // Plugin dosyası indirme endpoint'i (PUBLIC - WordPress için)
-app.get('/download/sss-ai-v2.8.zip', (req, res) => {
+app.get('/download/sss-ai.zip', (req, res) => {
   // Bu endpoint'i gerçek plugin zip dosyasını serve etmek için kullanabilirsiniz
   // Şimdilik placeholder response - gerçek zip dosyasını buraya koyun
   
@@ -177,11 +177,11 @@ app.get('/download/sss-ai-v2.8.zip', (req, res) => {
   // }
   
   // Geçici çözüm: Redirect to GitHub or your file server
-  res.redirect('https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip');
+  res.redirect('https://github.com/servisi/faq-ai/releases/download/sss-ai.zip');
   
   // Ya da doğrudan zip içeriği dönebilirsiniz (küçük dosyalar için)
   // res.setHeader('Content-Type', 'application/zip');
-  // res.setHeader('Content-Disposition', 'attachment; filename="sss-ai-v3.0.zip"');
+  // res.setHeader('Content-Disposition', 'attachment; filename="sss-ai.zip"');
   // res.send(zipBuffer); // Zip dosyasının buffer'ı
 });
 
@@ -977,3 +977,4 @@ app.get('/admin', adminAuth, (req, res) => {
 
 // Vercel için export
 module.exports = app;
+            
