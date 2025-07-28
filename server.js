@@ -1,4 +1,4 @@
-// server.js ama gizli
+// server.js
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
@@ -94,44 +94,78 @@ async function resetCreditsIfNeeded(user) {
 
 // === WORDPRESS GÜNCELLEME ENDPOİNTLERİ === //
 
-// Plugin versiyon bilgisi
-const PLUGIN_VERSION = {
-  version: '2.8', // Yeni versiyon
-  tested: '6.4',
-  last_updated: '2025-07-28',
-  download_url: 'https://publicus.com.tr/ai-oto-faq-generator.zip',
-  description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem. Otomatik güncelleme özelliği ile her zaman güncel kalın.',
-  changelog: `
-    <h4>Versiyon 2.8</h4>
-    <ul>
-      <li>Otomatik güncelleme sistemi eklendi</li>
-      <li>CSS dosyası eklenti içine gömüldü</li>
-      <li>Güncelleme bildirimleri ve kontrol butonu eklendi</li>
-      <li>Performans iyileştirmeleri</li>
-      <li>Hata düzeltmeleri</li>
-    </ul>
-    <h4>Versiyon 2.7</h4>
-    <ul>
-      <li>Manuel yenileme meta box eklendi</li>
-      <li>Çok dilli destek geliştirildi</li>
-      <li>UI/UX iyileştirmeleri</li>
-    </ul>
-  `
-};
+// Plugin Version Schema - MongoDB'de saklayacağız
+const PluginVersionSchema = new mongoose.Schema({
+  plugin_name: { type: String, default: 'sss-ai' },
+  version: { type: String, default: '2.9' },
+  tested: { type: String, default: '6.8' },
+  last_updated: { type: Date, default: Date.now },
+  download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/download/v2.9/sss-ai-v2.9.zip' },
+  description: { type: String, default: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.' },
+  changelog: { type: String, default: '<h4>Versiyon 2.8</h4><ul><li>Otomatik güncelleme sistemi eklendi</li></ul>' }
+});
+const PluginVersion = mongoose.model('PluginVersion', PluginVersionSchema);
+
+// Plugin versiyon bilgisini database'den al
+async function getPluginVersion() {
+  try {
+    let version = await PluginVersion.findOne({ plugin_name: 'sss-ai' });
+    if (!version) {
+      // İlk kez çalışıyorsa default değerleri kaydet
+      version = new PluginVersion({
+        plugin_name: 'sss-ai',
+        version: '2.9',
+        tested: '6.8',
+        download_url: 'https://github.com/servisi/faq-ai/releases/download/v2.9/sss-ai-v2.9.zip',
+        description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem.',
+        changelog: `
+          <h4>Versiyon 2.9</h4>
+          <ul>
+            <li>Otomatik güncelleme sistemi optimize edildi.</li>
+            <li>Sunucu taraflı performans iyileştirmeri yapıldı.</li>
+          </ul>
+        `
+      });
+      await version.save();
+    }
+    return version;
+  } catch (error) {
+    console.error('Plugin version fetch error:', error);
+    // Fallback değerler
+    return {
+      version: '2.8',
+      tested: '6.4',
+      last_updated: new Date().toISOString().split('T')[0],
+      download_url: 'https://github.com/servisi/faq-ai/releases/download/v2.9/sss-ai-v2.9.zip',
+      description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.',
+      changelog: '<h4>Versiyon 2.9</h4><ul><li>Otomatik güncelleme sistemi</li></ul>'
+    };
+  }
+}
 
 // WordPress güncelleme kontrolü endpoint'i
-app.get('/wp-update-check', (req, res) => {
+app.get('/wp-update-check', async (req, res) => {
   const { action, plugin } = req.query;
   
   if (action === 'get_version' && plugin === 'sss-ai') {
-    res.json(PLUGIN_VERSION);
+    const pluginVersion = await getPluginVersion();
+    res.json({
+      version: pluginVersion.version,
+      tested: pluginVersion.tested,
+      last_updated: pluginVersion.last_updated instanceof Date ? 
+        pluginVersion.last_updated.toISOString().split('T')[0] : 
+        pluginVersion.last_updated,
+      download_url: pluginVersion.download_url,
+      description: pluginVersion.description,
+      changelog: pluginVersion.changelog
+    });
   } else {
     res.status(404).json({ error: 'Invalid request' });
   }
 });
 
 // Plugin dosyası indirme endpoint'i (PUBLIC - WordPress için)
-app.get('/download/sss-ai-v2.8.zip', (req, res) => {
+app.get('/download/sss-ai-v2.9.zip', (req, res) => {
   // Bu endpoint'i gerçek plugin zip dosyasını serve etmek için kullanabilirsiniz
   // Şimdilik placeholder response - gerçek zip dosyasını buraya koyun
   
@@ -144,7 +178,7 @@ app.get('/download/sss-ai-v2.8.zip', (req, res) => {
   // }
   
   // Geçici çözüm: Redirect to GitHub or your file server
-  res.redirect('https://github.com/servisi/faq-ai/releases/download/v2.8/sss-ai-v2.8.zip');
+  res.redirect('https://github.com/servisi/faq-ai/releases/download/v2.9/sss-ai-v2.9.zip');
   
   // Ya da doğrudan zip içeriği dönebilirsiniz (küçük dosyalar için)
   // res.setHeader('Content-Type', 'application/zip');
@@ -153,7 +187,7 @@ app.get('/download/sss-ai-v2.8.zip', (req, res) => {
 });
 
 // Admin-only download endpoint (eski versiyon, sadmin için)
-app.get('/admin/download/sss-ai-v2.8.zip', adminAuth, (req, res) => {
+app.get('/admin/download/sss-ai-v2.9.zip', adminAuth, (req, res) => {
   res.json({
     message: 'Admin plugin download would be served here',
     note: 'Bu endpoint admin için özel indirme linki'
@@ -310,21 +344,24 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
     const freeUsers = await User.countDocuments({ plan: 'free' });
     const proUsers = await User.countDocuments({ plan: 'pro' });
     const activeUsers = await User.countDocuments({ credits: { $gt: 0 } });
+    const pluginVersion = await getPluginVersion();
 
     res.json({
       total_users: totalUsers,
       free_users: freeUsers,
       pro_users: proUsers,
       active_users: activeUsers,
-      plugin_version: PLUGIN_VERSION.version,
-      last_updated: PLUGIN_VERSION.last_updated
+      plugin_version: pluginVersion.version,
+      last_updated: pluginVersion.last_updated instanceof Date ? 
+        pluginVersion.last_updated.toISOString().split('T')[0] : 
+        pluginVersion.last_updated
     });
   } catch (error) {
     res.status(500).json({ error: 'Statistics fetch failed', details: error.message });
   }
 });
 
-// Plugin versiyonunu güncelleme endpoint'i (admin only)
+// Plugin versiyonunu güncelleme endpoint'i (admin only) - DATABASE'e kaydeder
 app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   const { version, tested, description, changelog, download_url } = req.body;
   
@@ -332,20 +369,43 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
     return res.status(400).json({ error: 'Version is required' });
   }
 
-  // Plugin versiyon bilgilerini güncelle
-  if (version) PLUGIN_VERSION.version = version;
-  if (tested) PLUGIN_VERSION.tested = tested;
-  if (description) PLUGIN_VERSION.description = description;
-  if (changelog) PLUGIN_VERSION.changelog = changelog;
-  if (download_url) PLUGIN_VERSION.download_url = download_url;
-  
-  PLUGIN_VERSION.last_updated = new Date().toISOString().split('T')[0];
+  try {
+    // Database'deki plugin versiyon bilgisini güncelle
+    let pluginVersion = await PluginVersion.findOne({ plugin_name: 'sss-ai' });
+    
+    if (!pluginVersion) {
+      pluginVersion = new PluginVersion({ plugin_name: 'sss-ai' });
+    }
 
-  res.json({
-    success: true,
-    message: 'Plugin version updated successfully',
-    updated_version: PLUGIN_VERSION
-  });
+    if (version) pluginVersion.version = version;
+    if (tested) pluginVersion.tested = tested;
+    if (description) pluginVersion.description = description;
+    if (changelog) pluginVersion.changelog = changelog;
+    if (download_url) pluginVersion.download_url = download_url;
+    
+    pluginVersion.last_updated = new Date();
+    
+    await pluginVersion.save();
+
+    res.json({
+      success: true,
+      message: 'Plugin version updated successfully in database',
+      updated_version: {
+        version: pluginVersion.version,
+        tested: pluginVersion.tested,
+        last_updated: pluginVersion.last_updated.toISOString().split('T')[0],
+        download_url: pluginVersion.download_url,
+        description: pluginVersion.description,
+        changelog: pluginVersion.changelog
+      }
+    });
+  } catch (error) {
+    console.error('Plugin version update error:', error);
+    res.status(500).json({ 
+      error: 'Database update failed', 
+      details: error.message 
+    });
+  }
 });
 
 // Admin Panel HTML Page (güncellenmiş versiyon)
