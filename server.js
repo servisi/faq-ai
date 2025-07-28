@@ -98,8 +98,8 @@ async function resetCreditsIfNeeded(user) {
 const PLUGIN_VERSION = {
   version: '2.8', // Yeni versiyon
   tested: '6.4',
-  last_updated: '2025-01-28',
-  download_url: 'https://faq-ai-chi.vercel.app/download/sss-ai-v2.8.zip',
+  last_updated: '2025-07-28',
+  download_url: 'https://publicus.com.tr/ai-oto-faq-generator.zip',
   description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem. Otomatik güncelleme özelliği ile her zaman güncel kalın.',
   changelog: `
     <h4>Versiyon 2.8</h4>
@@ -130,13 +130,33 @@ app.get('/wp-update-check', (req, res) => {
   }
 });
 
-// Plugin dosyası indirme endpoint'i (sadece admin)
-app.get('/download/sss-ai-v2.8.zip', adminAuth, (req, res) => {
+// Plugin dosyası indirme endpoint'i (PUBLIC - WordPress için)
+app.get('/download/sss-ai-v2.8.zip', (req, res) => {
   // Bu endpoint'i gerçek plugin zip dosyasını serve etmek için kullanabilirsiniz
-  // Şimdilik placeholder response
+  // Şimdilik placeholder response - gerçek zip dosyasını buraya koyun
+  
+  // Örnek: Gerçek dosya servisi
+  // const filePath = path.join(__dirname, 'files', 'sss-ai-v2.8.zip');
+  // if (fs.existsSync(filePath)) {
+  //   res.download(filePath, 'sss-ai-v2.8.zip');
+  // } else {
+  //   res.status(404).json({ error: 'File not found' });
+  // }
+  
+  // Geçici çözüm: Redirect to GitHub or your file server
+  res.redirect('https://github.com/youruser/your-plugin-repo/releases/download/v2.8/sss-ai-v2.8.zip');
+  
+  // Ya da doğrudan zip içeriği dönebilirsiniz (küçük dosyalar için)
+  // res.setHeader('Content-Type', 'application/zip');
+  // res.setHeader('Content-Disposition', 'attachment; filename="sss-ai-v2.8.zip"');
+  // res.send(zipBuffer); // Zip dosyasının buffer'ı
+});
+
+// Admin-only download endpoint (eski versiyon, sadmin için)
+app.get('/admin/download/sss-ai-v2.8.zip', adminAuth, (req, res) => {
   res.json({
-    message: 'Plugin download would be served here',
-    note: 'Bu endpoint gerçek plugin zip dosyasını serve etmek için kullanılacak'
+    message: 'Admin plugin download would be served here',
+    note: 'Bu endpoint admin için özel indirme linki'
   });
 });
 
