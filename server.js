@@ -144,7 +144,7 @@ app.get('/download/sss-ai-v2.8.zip', (req, res) => {
   // }
   
   // Geçici çözüm: Redirect to GitHub or your file server
-  res.redirect('https://github.com/youruser/your-plugin-repo/releases/download/v2.8/sss-ai-v2.8.zip');
+  res.redirect('https://github.com/servisi/faq-ai/releases/download/v2.8/sss-ai-v2.8.zip');
   
   // Ya da doğrudan zip içeriği dönebilirsiniz (küçük dosyalar için)
   // res.setHeader('Content-Type', 'application/zip');
