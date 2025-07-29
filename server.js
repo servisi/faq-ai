@@ -291,7 +291,12 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   await checkProExpiration(user);
   await resetCreditsIfNeeded(user);
 
-  const { title, num_questions, language = 'tr', answer_length = 'short' } = req.body;
+  let { title, num_questions, language = 'tr', answer_length = 'short' } = req.body;
+
+  if (user.plan === 'free') {
+    num_questions = 5;
+    answer_length = 'short';
+  }
 
   if (num_questions < 5 || num_questions > 15) {
     return res.status(400).json({ error: 'Number of questions must be between 5 and 15' });
