@@ -852,7 +852,7 @@ app.get('/admin', adminAuth, (req, res) => {
           // Show selected tab content
           document.getElementById(tabName + '-tab').classList.add('active');
           // Add active class to clicked tab
-          this.classList.add('active');
+          event.target.classList.add('active');
           
           // Load data for specific tabs
           if (tabName === 'users') {
