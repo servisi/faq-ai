@@ -340,9 +340,9 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   const length_instruction = answer_length === 'long' ? 'orta uzunlukta, detaylı' : 'kısa ve öz';
   const no_contact_instruction = 'Cevaplarda kesinlikle telefon numarası, site adresi veya iletişim bilgisi olmasın.';
   if (language === 'tr') {
-    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine ${length_instruction}, bilgilendirici cevap ver. ${no_contact_instruction} Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]} `;
+    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine ${length_instruction}, bilgilendirici cevap ver. ${no_contact_instruction} Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
   } else {
-    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide ${length_instruction}, informative answers for each. ${no_contact_instruction} Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]} `;
+    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide ${length_instruction}, informative answers for each. ${no_contact_instruction} Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
   }
 
   try {
@@ -852,7 +852,7 @@ app.get('/admin', adminAuth, (req, res) => {
           // Show selected tab content
           document.getElementById(tabName + '-tab').classList.add('active');
           // Add active class to clicked tab
-          event.target.classList.add('active');
+          this.classList.add('active');
           
           // Load data for specific tabs
           if (tabName === 'users') {
