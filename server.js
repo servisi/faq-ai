@@ -9,7 +9,27 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const basicAuth = require('basic-auth');
 
+// Bağımlılıkları kontrol et
+try {
+  if (!express || !jwt || !mongoose || !dotenv || !OpenAI || !axios || !cors || !rateLimit || !basicAuth) {
+    throw new Error('Bir veya daha fazla bağımlılık eksik. Lütfen `npm install` komutunu çalıştırın.');
+  }
+} catch (error) {
+  console.error('Bağımlılık kontrol hatası:', error.message);
+  process.exit(1);
+}
+
+// .env dosyasını yükle
 dotenv.config();
+
+// Çevresel değişkenleri kontrol et
+const requiredEnvVars = ['MONGO_URI', 'OPENAI_API_KEY', 'SERPER_API_KEY', 'JWT_SECRET', 'ADMIN_USER', 'ADMIN_PASS'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+if (missingEnvVars.length > 0) {
+  console.error(`Eksik çevresel değişkenler: ${missingEnvVars.join(', ')}`);
+  process.exit(1);
+}
+
 const app = express();
 app.use(express.json());
 app.use(cors({
@@ -21,12 +41,25 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
-  message: 'Too many requests, please try again later.'
+  max: 20, // DEĞİŞİKLİK: Daha fazla esneklik için limiti artırdım
+  message: 'Çok fazla istek, lütfen daha sonra tekrar deneyin.'
 });
 app.use('/api/generate-faq', limiter);
 
-mongoose.connect(process.env.MONGO_URI);
+// MongoDB bağlantısı
+async function connectToMongo() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    console.log('MongoDB bağlantısı başarılı');
+  } catch (error) {
+    console.error('MongoDB bağlantı hatası:', error.message);
+    process.exit(1);
+  }
+}
+connectToMongo();
 
 // Kullanıcı şeması
 const UserSchema = new mongoose.Schema({
@@ -66,7 +99,7 @@ function adminAuth(req, res, next) {
   const user = basicAuth(req);
   if (!user || user.name !== ADMIN_USER || user.pass !== ADMIN_PASS) {
     res.setHeader('WWW-Authenticate', 'Basic realm="Admin"');
-    return res.status(401).send('Unauthorized');
+    return res.status(401).send('Yetkisiz erişim');
   }
   next();
 }
@@ -74,13 +107,14 @@ function adminAuth(req, res, next) {
 // Middleware: Token Doğrula
 function authenticate(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  if (!token) return res.status(401).json({ error: 'Yetkisiz: Token eksik' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.userId;
     next();
   } catch (err) {
-    res.status(401).json({ error: 'Invalid token' });
+    console.error('Token doğrulama hatası:', err.message);
+    res.status(401).json({ error: 'Geçersiz token' });
   }
 }
 
@@ -143,7 +177,7 @@ async function getPluginVersion() {
     }
     return version;
   } catch (error) {
-    console.error('Plugin version fetch error:', error);
+    console.error('Plugin version fetch error:', error.message);
     return {
       version: '3.1',
       tested: '6.8',
@@ -172,7 +206,7 @@ app.get('/wp-update-check', async (req, res) => {
       changelog: pluginVersion.changelog
     });
   } else {
-    res.status(404).json({ error: 'Invalid request' });
+    res.status(404).json({ error: 'Geçersiz istek' });
   }
 });
 
@@ -201,12 +235,10 @@ app.get('/changelog/sss-ai', async (req, res) => {
   });
 });
 
-// === MEVCUT ENDPOİNTLER === //
-
 // Kayıt Endpoint
 app.post('/register', async (req, res) => {
   const { email, phone, site } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email required' });
+  if (!email) return res.status(400).json({ error: 'Email gerekli' });
   
   let user = await User.findOne({ email });
   if (user) {
@@ -239,24 +271,25 @@ app.post('/register', async (req, res) => {
 app.post('/delete-account', authenticate, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
 
     user.deletedAt = new Date();
     await user.save();
 
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: 'Account deletion failed' });
+    console.error('Hesap silme hatası:', err.message);
+    res.status(500).json({ error: 'Hesap silme başarısız' });
   }
 });
 
 // User Info Endpoint
 app.get('/user-info', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
 
   if (user.deletedAt) {
-    return res.status(401).json({ error: 'Account deleted' });
+    return res.status(401).json({ error: 'Hesap silinmiş' });
   }
 
   await checkProExpiration(user);
@@ -279,13 +312,13 @@ app.get('/user-info', authenticate, async (req, res) => {
   });
 });
 
-// FAQ Üret Endpoint (DEĞİŞİKLİK: Tamamen senkron hale getirildi, arka plan kaldırıldı)
+// FAQ Üret Endpoint (DEĞİŞİKLİK: Senkron üretim, daha net hata yönetimi)
 app.post('/api/generate-faq', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
 
   if (user.deletedAt) {
-    return res.status(401).json({ error: 'Account deleted' });
+    return res.status(401).json({ error: 'Hesap silinmiş' });
   }
 
   await checkProExpiration(user);
@@ -293,7 +326,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   let { title, num_questions, language = 'tr', answer_length = 'short', force = false } = req.body;
 
-  // 1. Kredi hesaplama düzeltildi: her 5 soru için 1 kredi
+  // 1. Kredi hesaplama
   const required_credits = Math.ceil(num_questions / 5);
   
   // 2. Plan kontrolü ve parametre düzeltmeleri
@@ -319,7 +352,8 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   if (exactCache && !force) {
     return res.json({ 
       faqs: exactCache.faqs, 
-      cached: true 
+      cached: true,
+      message: 'Önbellekten yüklendi'
     });
   }
 
@@ -329,15 +363,16 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
     language
   }).sort({ createdAt: -1 });
 
-  // 7. Kredi kontrolü (sadece yeni üretim için)
+  // 7. Kredi kontrolü
   if (!exactCache && user.credits < required_credits) {
     return res.status(400).json({ 
       error: 'no_credits',
+      message: 'Yetersiz kredi',
       cached_faqs: nearestCache?.faqs || []
     });
   }
 
-  // 8. Arka planda üretim fonksiyonu (DEĞİŞİKLİK: Artık senkron, doğrudan await ile çağrılıyor)
+  // 8. SSS üretim fonksiyonu
   const generateFAQs = async () => {
     let recentNews = '';
     let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news';
@@ -362,7 +397,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
       const results = searchResponse.data.organic || [];
       recentNews = results.map(result => `${result.title}: ${result.snippet} (Kaynak: ${result.link})`).join('\n');
     } catch (searchErr) {
-      console.error('Search error:', searchErr);
+      console.error('Serper API hatası:', searchErr.message);
       recentNews = language === 'tr' ? 'Güncel haberler tespit edilemedi.' : 'Recent news could not be detected.';
     }
 
@@ -390,23 +425,23 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
       try {
         faqs = JSON.parse(content).faqs;
       } catch (parseErr) {
-        console.error('JSON parse error:', parseErr, content);
+        console.error('JSON parse hatası:', parseErr.message, content);
         return [];
       }
 
       if (faqs.length !== num_questions) {
-        console.error('AI generated wrong number of FAQs');
+        console.error('AI yanlış sayıda SSS üretti:', faqs.length, 'beklenen:', num_questions);
         return [];
       }
 
       return faqs;
     } catch (err) {
-      console.error('OpenAI error:', err);
+      console.error('OpenAI hatası:', err.message);
       return [];
     }
   };
 
-  // DEĞİŞİKLİK: Önbellek yoksa üret ve bekle (arka plan kaldırıldı)
+  // 9. Önbellek yoksa üret ve bekle
   if (!exactCache) {
     // Kredi düşür
     user.credits -= required_credits;
@@ -424,7 +459,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
         
         res.json({ 
           faqs: faqs,
-          message: "Yeni üretildi ve önbelleğe alındı"
+          message: 'Yeni üretildi ve önbelleğe alındı'
         });
       } else {
         // Üretim başarısız, krediyi iade et
@@ -432,29 +467,26 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
         await user.save();
         res.status(500).json({ 
           error: 'generation_failed',
+          message: 'SSS üretimi başarısız oldu',
           cached_faqs: nearestCache?.faqs || []
         });
       }
     } catch (error) {
-      console.error('Generation error:', error);
+      console.error('Üretim hatası:', error.message);
       // Hata durumunda krediyi iade et
       user.credits += required_credits;
       await user.save();
       res.status(500).json({ 
         error: 'server_error',
+        message: 'Sunucu hatası: SSS üretimi başarısız',
         details: error.message,
         cached_faqs: nearestCache?.faqs || []
       });
     }
   } else {
-    // Önbellek varsa dön
     res.json({ 
-      faqs: exactCache?.faqs || nearestCache?.faqs || [],
-      message: exactCache ? 
-        "Önbellekten yüklendi" : 
-        nearestCache ? 
-          "Benzer içerik yüklendi" : 
-          "Üretim tamamlandı"
+      faqs: exactCache.faqs,
+      message: 'Önbellekten yüklendi'
     });
   }
 });
@@ -465,22 +497,32 @@ app.get('/admin/users', adminAuth, async (req, res) => {
   let query = {};
   if (plan && plan !== 'all') query.plan = plan;
   if (search) query.email = { $regex: search, $options: 'i' };
-  const users = await User.find(query, 'email phone site plan credits expirationDate lastReset createdAt deletedAt');
-  res.json(users);
+  try {
+    const users = await User.find(query, 'email phone site plan credits expirationDate lastReset createdAt deletedAt');
+    res.json(users);
+  } catch (error) {
+    console.error('Kullanıcı listeleme hatası:', error.message);
+    res.status(500).json({ error: 'Kullanıcılar yüklenemedi', details: error.message });
+  }
 });
 
 // Admin Update User Endpoint
 app.post('/admin/update-user', adminAuth, async (req, res) => {
   const { userId, plan, credits, expirationDate } = req.body;
-  const user = await User.findById(userId);
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  try {
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
 
-  if (plan) user.plan = plan;
-  if (credits !== undefined) user.credits = credits;
-  if (expirationDate) user.expirationDate = new Date(expirationDate);
-  await user.save();
+    if (plan) user.plan = plan;
+    if (credits !== undefined) user.credits = credits;
+    if (expirationDate) user.expirationDate = new Date(expirationDate);
+    await user.save();
 
-  res.json({ success: true });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Kullanıcı güncelleme hatası:', error.message);
+    res.status(500).json({ error: 'Kullanıcı güncelleme başarısız', details: error.message });
+  }
 });
 
 // Plugin istatistikleri endpoint'i
@@ -508,7 +550,8 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
         pluginVersion.last_updated
     });
   } catch (error) {
-    res.status(500).json({ error: 'Statistics fetch failed', details: error.message });
+    console.error('İstatistik yükleme hatası:', error.message);
+    res.status(500).json({ error: 'İstatistikler yüklenemedi', details: error.message });
   }
 });
 
@@ -517,7 +560,7 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   const { version, tested, description, changelog, download_url } = req.body;
   
   if (!version) {
-    return res.status(400).json({ error: 'Version is required' });
+    return res.status(400).json({ error: 'Versiyon gerekli' });
   }
 
   try {
@@ -539,7 +582,7 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Plugin version updated successfully in database',
+      message: 'Plugin versiyonu başarıyla güncellendi',
       updated_version: {
         version: pluginVersion.version,
         tested: pluginVersion.tested,
@@ -550,9 +593,9 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Plugin version update error:', error);
+    console.error('Plugin versiyon güncelleme hatası:', error.message);
     res.status(500).json({ 
-      error: 'Database update failed', 
+      error: 'Veritabanı güncelleme başarısız', 
       details: error.message 
     });
   }
@@ -957,7 +1000,7 @@ app.get('/admin', adminAuth, (req, res) => {
               </div>
             `;
           } catch (error) {
-            console.error('Stats yükleme hatası:', error);
+            console.error('Stats yükleme hatası:', error.message);
           }
         }
 
@@ -1037,7 +1080,7 @@ app.get('/admin', adminAuth, (req, res) => {
             
             updateStats();
           } catch (error) {
-            console.error('Hata:', error);
+            console.error('Kullanıcı yükleme hatası:', error.message);
             alert('Kullanıcılar yüklenirken bir hata oluştu.');
           }
         }
@@ -1051,7 +1094,7 @@ app.get('/admin', adminAuth, (req, res) => {
             const proCount = allUsers.filter(u => u.plan === 'pro').length;
             document.getElementById('stats').innerHTML = '<p><strong>Toplam Free Kullanıcı: ' + freeCount + '</strong> | <strong>Toplam Pro Kullanıcı: ' + proCount + '</strong></p>';
           } catch (error) {
-            console.error('Hata:', error);
+            console.error('İstatistik yükleme hatası:', error.message);
           }
         }
 
@@ -1087,7 +1130,7 @@ app.get('/admin', adminAuth, (req, res) => {
                 throw new Error('Güncelleme hatası');
               }
             } catch (error) {
-              console.error('Hata:', error);
+              console.error('Kullanıcı güncelleme hatası:', error.message);
               alert('Güncelleme sırasında bir hata oluştu!');
             }
           } else {
@@ -1107,6 +1150,18 @@ app.get('/admin', adminAuth, (req, res) => {
     </body>
     </html>
   `);
+});
+
+// Sunucuyu başlat
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Sunucu ${PORT} portunda çalışıyor`);
+}).on('error', (error) => {
+  console.error('Sunucu başlatma hatası:', error.message);
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} zaten kullanımda. Başka bir port deneyin veya portu serbest bırakın.`);
+  }
+  process.exit(1);
 });
 
 module.exports = app;
