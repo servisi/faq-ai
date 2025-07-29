@@ -203,11 +203,16 @@ app.post('/register', async (req, res) => {
   
   let user = await User.findOne({ email });
   if (user) {
+    // Mevcut kullanıcı için phone ve site'yi güncelle
+    if (phone) user.phone = phone;
+    if (site) user.site = site;
+    
     // Hesap silinmişse yeniden aktif et
     if (user.deletedAt) {
       user.deletedAt = null;
-      await user.save();
     }
+    
+    await user.save();
     
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
     return res.json({ token });
