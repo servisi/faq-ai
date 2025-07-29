@@ -320,6 +320,12 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
     return res.json({ faqs: cachedFaq.faqs, cached: true });
   }
 
+  // Kredi kontrolü (cache yoksa veya force=true ise)
+  const required_credits = Math.ceil(num_questions / 5);
+  if (user.credits < required_credits) {
+    return res.status(400).json({ error: 'no_credits' });
+  }
+
   let recentNews = '';
   let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news'; // Dil bazında uyarla
   let serperHl = language; // hl=tr, en, etc.
@@ -382,10 +388,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
       return res.status(500).json({ error: 'AI response parse failed' });
     }
 
-    // Kredi hesabı: 5 soru-cevap = 1 kredi
-    const required_credits = Math.ceil(num_questions / 5);
-    
-    // Kredi düşür (force olsa bile)
+    // Kredi düşür
     user.credits -= required_credits;
     await user.save();
 
