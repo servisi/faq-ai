@@ -45,6 +45,17 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', UserSchema);
 
+// Önbellek için MongoDB şeması
+const FaqCacheSchema = new mongoose.Schema({
+  title: String,
+  language: String,
+  num_questions: Number,
+  answer_length: String,
+  faqs: Array, // Array of {question, answer}
+  createdAt: { type: Date, default: Date.now, expires: '7d' } // expire after 7 days
+});
+const FaqCache = mongoose.model('FaqCache', FaqCacheSchema);
+
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -106,12 +117,12 @@ async function resetCreditsIfNeeded(user) {
 // Plugin Version Schema - MongoDB'de saklayacağız
 const PluginVersionSchema = new mongoose.Schema({
   plugin_name: { type: String, default: 'sss-ai' },
-  version: { type: String, default: '3.0' },
+  version: { type: String, default: '3.1' },
   tested: { type: String, default: '6.8' },
   last_updated: { type: Date, default: Date.now },
   download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/download/sss-ai.zip' },
   description: { type: String, default: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.' },
-  changelog: { type: String, default: '<h4>Versiyon 3.0</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>' }
+  changelog: { type: String, default: '<h4>Versiyon 3.1</h4><ul><li>Performans iyileştirmeleri ve önbellek sistemi</li></ul>' }
 });
 const PluginVersion = mongoose.model('PluginVersion', PluginVersionSchema);
 
@@ -123,14 +134,14 @@ async function getPluginVersion() {
       // İlk kez çalışıyorsa default değerleri kaydet
       version = new PluginVersion({
         plugin_name: 'sss-ai',
-        version: '3.0',
+        version: '3.1',
         tested: '6.8',
         download_url: 'https://github.com/servisi/faq-ai/releases/download/sss-ai.zip',
         description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem.',
         changelog: `
-          <h4>Versiyon 3.0</h4>
+          <h4>Versiyon 3.1</h4>
     <ul>
-      <li>Güncelleme sırasında oluşan hata çözüldü.</li>
+      <li>Performans iyileştirmeleri ve önbellek sistemi</li>
     </ul>
         `
       });
@@ -141,12 +152,12 @@ async function getPluginVersion() {
     console.error('Plugin version fetch error:', error);
     // Fallback değerler
     return {
-      version: '3.0',
+      version: '3.1',
       tested: '6.8',
       last_updated: new Date().toISOString().split('T')[0],
       download_url: 'https://github.com/servisi/faq-ai/releases/download/sss-ai.zip',
       description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.',
-      changelog: '<h4>Versiyon 2.8</h4><ul><li>Otomatik güncelleme sistemi</li></ul>'
+      changelog: '<h4>Versiyon 3.1</h4><ul><li>Performans iyileştirmeleri ve önbellek sistemi</li></ul>'
     };
   }
 }
@@ -178,7 +189,7 @@ app.get('/download/sss-ai.zip', (req, res) => {
 });
 
 // Admin-only download endpoint (eski versiyon, sadmin için)
-app.get('/admin/download/sss-ai-v3.0.zip', adminAuth, (req, res) => {
+app.get('/admin/download/sss-ai-v3.1.zip', adminAuth, (req, res) => {
   res.json({
     message: 'Admin plugin download would be served here',
     note: 'Bu endpoint admin için özel indirme linki'
@@ -302,10 +313,11 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'Number of questions must be between 5 and 15' });
   }
 
-  // Kredi hesabı: 5 soru-cevap = 1 kredi
-  const required_credits = Math.ceil(num_questions / 5);
-  if (user.credits < required_credits) {
-    return res.status(402).json({ error: 'no_credits' });
+  // Önbellek kontrolü
+  const cacheKey = { title, language, num_questions, answer_length };
+  const cachedFaq = await FaqCache.findOne(cacheKey);
+  if (cachedFaq) {
+    return res.json({ faqs: cachedFaq.faqs, cached: true });
   }
 
   let recentNews = '';
@@ -353,11 +365,11 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
       response_format: { type: "json_object" }
     });
     
-    // 45 saniye timeout ile OpenAI çağrısı
+    // 90 saniye timeout ile OpenAI çağrısı
     const completion = await Promise.race([
       openaiPromise,
       new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('OpenAI timeout')), 45000)
+        setTimeout(() => reject(new Error('OpenAI timeout')), 90000)
       )
     ]);
     
@@ -370,8 +382,19 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
       return res.status(500).json({ error: 'AI response parse failed' });
     }
 
+    // Kredi hesabı: 5 soru-cevap = 1 kredi
+    const required_credits = Math.ceil(num_questions / 5);
+    
+    // Sadece cache yokken kredi düşür
     user.credits -= required_credits;
     await user.save();
+
+    // Önbelleğe kaydet
+    const faqCache = new FaqCache({
+      ...cacheKey,
+      faqs: faqs
+    });
+    await faqCache.save();
 
     res.json({ faqs });
   } catch (err) {
@@ -870,36 +893,36 @@ app.get('/admin', adminAuth, (req, res) => {
             const stats = await response.json();
             
             const statsGrid = document.getElementById('statsGrid');
-            statsGrid.innerHTML = `
+            statsGrid.innerHTML = \`
               <div class="stat-card">
-                <div class="stat-number">${stats.total_users}</div>
+                <div class="stat-number">\${stats.total_users}</div>
                 <div class="stat-label">Toplam Kullanıcı</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.free_users}</div>
+                <div class="stat-number">\${stats.free_users}</div>
                 <div class="stat-label">Free Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.pro_users}</div>
+                <div class="stat-number">\${stats.pro_users}</div>
                 <div class="stat-label">Pro Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.agency_users}</div>
+                <div class="stat-number">\${stats.agency_users}</div>
                 <div class="stat-label">Agency Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.active_users}</div>
+                <div class="stat-number">\${stats.active_users}</div>
                 <div class="stat-label">Aktif Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">v${stats.plugin_version}</div>
+                <div class="stat-number">v\${stats.plugin_version}</div>
                 <div class="stat-label">Mevcut Plugin Versiyonu</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.last_updated}</div>
+                <div class="stat-number">\${stats.last_updated}</div>
                 <div class="stat-label">Son Güncelleme</div>
               </div>
-            `;
+            \`;
           } catch (error) {
             console.error('Stats yükleme hatası:', error);
           }
@@ -928,26 +951,26 @@ app.get('/admin', adminAuth, (req, res) => {
             const resultDiv = document.getElementById('pluginUpdateResult');
             
             if (response.ok) {
-              resultDiv.innerHTML = `
+              resultDiv.innerHTML = \`
                 <div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v${result.updated_version.version}
+                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v\${result.updated_version.version}
                 </div>
-              `;
+              \`;
               // Form'u temizle
               document.getElementById('pluginVersionForm').reset();
             } else {
-              resultDiv.innerHTML = `
+              resultDiv.innerHTML = \`
                 <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Hata:</strong> ${result.error}
+                  <strong>Hata:</strong> \${result.error}
                 </div>
-              `;
+              \`;
             }
           } catch (error) {
-            document.getElementById('pluginUpdateResult').innerHTML = `
+            document.getElementById('pluginUpdateResult').innerHTML = \`
               <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                <strong>Hata:</strong> ${error.message}
+                <strong>Hata:</strong> \${error.message}
               </div>
-            `;
+            \`;
           }
         });
 
@@ -977,7 +1000,7 @@ app.get('/admin', adminAuth, (req, res) => {
                 '<td>' + createdAt + '</td>' +
                 '<td>' + deletedAt + '</td>' +
                 '<td>' +
-                  '<button onclick="openModal(\'' + user._id + '\', \'' + user.plan + '\', ' + user.credits + ', \'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\')">Düzenle</button>' +
+                  '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
                 '</td>';
               tbody.appendChild(tr);
             });
