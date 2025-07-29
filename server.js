@@ -30,15 +30,18 @@ app.use('/api/generate-faq', limiter);
 
 mongoose.connect(process.env.MONGO_URI);
 
+// Kullanıcı şemasına telefon ve site alanları eklendi
 const UserSchema = new mongoose.Schema({
   email: String,
+  phone: String, // Yeni alan
+  site: String,  // Yeni alan
   credits: { type: Number, default: 20 },
   lastReset: { type: Date, default: Date.now },
   plan: { type: String, default: 'free' },
   expirationDate: { type: Date, default: null },
-  createdAt: { type: Date, default: Date.now },   // Yeni alan
-  deletedAt: { type: Date, default: null },      // Yeni alan
-  deactivatedAt: { type: Date, default: null }   // Yeni alan
+  createdAt: { type: Date, default: Date.now },
+  deletedAt: { type: Date, default: null },
+  deactivatedAt: { type: Date, default: null }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -193,7 +196,7 @@ app.get('/changelog/sss-ai', async (req, res) => {
 
 // === MEVCUT ENDPOİNTLER === //
 
-// Kayıt Endpoint
+// Kayıt Endpoint (telefon ve site bilgilerini kaydet)
 app.post('/register', async (req, res) => {
   const { email, phone, site } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
@@ -212,8 +215,8 @@ app.post('/register', async (req, res) => {
   
   user = new User({ 
     email,
-    phone,
-    site,
+    phone, // Telefon bilgisi kaydediliyor
+    site,  // Site URL bilgisi kaydediliyor
     createdAt: new Date()
   });
   
@@ -237,7 +240,7 @@ app.post('/delete-account', authenticate, async (req, res) => {
   }
 });
 
-// User Info Endpoint
+// User Info Endpoint (telefon ve site bilgilerini döndür)
 app.get('/user-info', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -261,7 +264,9 @@ app.get('/user-info', authenticate, async (req, res) => {
     credits: user.credits,
     remainingDays: remainingDays,
     createdAt: user.createdAt,
-    deletedAt: user.deletedAt
+    deletedAt: user.deletedAt,
+    phone: user.phone, // Telefon bilgisi
+    site: user.site    // Site URL bilgisi
   });
 });
 
@@ -342,13 +347,13 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   }
 });
 
-// Admin Users Endpoint (with search and plan filter)
+// Admin Users Endpoint (with search and plan filter) - telefon ve site bilgilerini ekledik
 app.get('/admin/users', adminAuth, async (req, res) => {
   const { search, plan } = req.query;
   let query = {};
   if (plan && plan !== 'all') query.plan = plan;
   if (search) query.email = { $regex: search, $options: 'i' }; // Email search, case-insensitive
-  const users = await User.find(query, 'email plan credits expirationDate lastReset createdAt deletedAt');
+  const users = await User.find(query, 'email phone site plan credits expirationDate lastReset createdAt deletedAt');
   res.json(users);
 });
 
@@ -719,6 +724,8 @@ app.get('/admin', adminAuth, (req, res) => {
           <thead>
             <tr>
               <th>Email</th>
+              <th>Telefon</th>
+              <th>Site</th>
               <th>Plan</th>
               <th>Credits</th>
               <th>Oluşturulma</th>
@@ -919,6 +926,8 @@ app.get('/admin', adminAuth, (req, res) => {
               const tr = document.createElement('tr');
               tr.innerHTML = 
                 '<td>' + user.email + '</td>' +
+                '<td>' + (user.phone || 'N/A') + '</td>' +
+                '<td>' + (user.site || 'N/A') + '</td>' +
                 '<td>' + user.plan + '</td>' +
                 '<td>' + user.credits + '</td>' +
                 '<td>' + createdAt + '</td>' +
