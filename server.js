@@ -76,10 +76,10 @@ function authenticate(req, res, next) {
   }
 }
 
-// Helper: Pro Expiration Kontrolü ve Downgrade
+// Helper: Pro/Agency Expiration Kontrolü ve Downgrade
 async function checkProExpiration(user) {
   const now = new Date();
-  if (user.plan === 'pro' && user.expirationDate && user.expirationDate < now) {
+  if ((user.plan === 'pro' || user.plan === 'agency') && user.expirationDate && user.expirationDate < now) {
     user.plan = 'free';
     user.credits = 20;
     user.lastReset = now;
@@ -92,7 +92,10 @@ async function checkProExpiration(user) {
 async function resetCreditsIfNeeded(user) {
   const now = new Date();
   if (now.getMonth() !== user.lastReset.getMonth() || now.getFullYear() !== user.lastReset.getFullYear()) {
-    user.credits = user.plan === 'pro' ? 120 : 20;
+    let credits = 20;
+    if (user.plan === 'pro') credits = 120;
+    if (user.plan === 'agency') credits = 1000;
+    user.credits = credits;
     user.lastReset = now;
     await user.save();
   }
@@ -260,12 +263,12 @@ app.get('/user-info', authenticate, async (req, res) => {
 
   const now = new Date();
   let remainingDays = 0;
-  if (user.plan === 'pro' && user.expirationDate) {
+  if ((user.plan === 'pro' || user.plan === 'agency') && user.expirationDate) {
     remainingDays = Math.max(0, Math.ceil((user.expirationDate - now) / (1000 * 60 * 60 * 24)));
   }
 
   res.json({
-    plan: user.plan === 'free' ? 'Ücretsiz Sürüm' : 'Pro Sürüm',
+    plan: user.plan === 'free' ? 'Ücretsiz Sürüm' : user.plan === 'pro' ? 'Pro Sürüm' : 'Agency Sürüm',
     credits: user.credits,
     remainingDays: remainingDays,
     createdAt: user.createdAt,
@@ -288,11 +291,17 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   await checkProExpiration(user);
   await resetCreditsIfNeeded(user);
 
-  if (user.credits <= 0) {
-    return res.status(402).json({ error: 'no_credits' });
+  const { title, num_questions, language = 'tr', answer_length = 'short' } = req.body;
+
+  if (num_questions < 5 || num_questions > 15) {
+    return res.status(400).json({ error: 'Number of questions must be between 5 and 15' });
   }
 
-  const { title, num_questions, language = 'tr' } = req.body;
+  // Kredi hesabı: 5 soru-cevap = 1 kredi
+  const required_credits = Math.ceil(num_questions / 5);
+  if (user.credits < required_credits) {
+    return res.status(402).json({ error: 'no_credits' });
+  }
 
   let recentNews = '';
   let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news'; // Dil bazında uyarla
@@ -321,10 +330,12 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   // Prompt'u dil bazında uyarla (daha fazla dil için switch ekle)
   let prompt;
+  const length_instruction = answer_length === 'long' ? 'orta uzunlukta, detaylı' : 'kısa ve öz';
+  const no_contact_instruction = 'Cevaplarda kesinlikle telefon numarası, site adresi veya iletişim bilgisi olmasın.';
   if (language === 'tr') {
-    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
+    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine ${length_instruction}, bilgilendirici cevap ver. ${no_contact_instruction} Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
   } else {
-    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide short, informative answers for each. Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
+    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide ${length_instruction}, informative answers for each. ${no_contact_instruction} Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
   }
 
   try {
@@ -342,7 +353,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
       return res.status(500).json({ error: 'AI response parse failed' });
     }
 
-    user.credits -= 1;
+    user.credits -= required_credits;
     await user.save();
 
     res.json({ faqs });
@@ -382,6 +393,7 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
     const totalUsers = await User.countDocuments();
     const freeUsers = await User.countDocuments({ plan: 'free' });
     const proUsers = await User.countDocuments({ plan: 'pro' });
+    const agencyUsers = await User.countDocuments({ plan: 'agency' });
     const activeUsers = await User.countDocuments({ 
       credits: { $gt: 0 },
       deletedAt: null
@@ -392,6 +404,7 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
       total_users: totalUsers,
       free_users: freeUsers,
       pro_users: proUsers,
+      agency_users: agencyUsers,
       active_users: activeUsers,
       plugin_version: pluginVersion.version,
       last_updated: pluginVersion.last_updated instanceof Date ? 
@@ -721,6 +734,7 @@ app.get('/admin', adminAuth, (req, res) => {
             <option value="all">Tümü</option>
             <option value="free">Free</option>
             <option value="pro">Pro (Aktif)</option>
+            <option value="agency">Agency</option>
           </select>
           <button onclick="loadUsers()">Ara/Filtrele</button>
         </div>
@@ -790,6 +804,7 @@ app.get('/admin', adminAuth, (req, res) => {
             <select id="editPlan">
               <option value="free">Free</option>
               <option value="pro">Pro</option>
+              <option value="agency">Agency</option>
             </select>
             <label for="editCredits">Credits:</label>
             <input type="number" id="editCredits" min="0">
@@ -847,6 +862,10 @@ app.get('/admin', adminAuth, (req, res) => {
               <div class="stat-card">
                 <div class="stat-number">\${stats.pro_users}</div>
                 <div class="stat-label">Pro Kullanıcılar</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-number">\${stats.agency_users}</div>
+                <div class="stat-label">Agency Kullanıcılar</div>
               </div>
               <div class="stat-card">
                 <div class="stat-number">\${stats.active_users}</div>
