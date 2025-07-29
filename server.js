@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
@@ -31,6 +30,13 @@ if (missingEnvVars.length > 0) {
 }
 
 const app = express();
+
+// Tüm istekler için loglama
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 app.use(express.json());
 app.use(cors({
   origin: '*',
@@ -51,12 +57,14 @@ async function connectToMongo() {
   try {
     await mongoose.connect(process.env.MONGO_URI, {
       useNewUrlParser: true,
-      useUnifiedTopology: true
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 10000
     });
     console.log('MongoDB bağlantısı başarılı');
   } catch (error) {
     console.error('MongoDB bağlantı hatası:', error.message);
-    process.exit(1);
+    // Uygulamayı sonlandırma, sadece logla
   }
 }
 connectToMongo();
@@ -1165,16 +1173,25 @@ app.get('/admin', adminAuth, (req, res) => {
   `);
 });
 
+// Global hata işleyici
+app.use((err, req, res, next) => {
+  console.error('Yakalanmamış Hata:', err.stack);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+
 // Sunucuyu başlat
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Sunucu ${PORT} portunda çalışıyor`);
-}).on('error', (error) => {
-  console.error('Sunucu başlatma hatası:', error.message);
+});
+
+server.on('error', (error) => {
   if (error.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} zaten kullanımda. Başka bir port deneyin veya portu serbest bırakın.`);
+    console.log(`Port ${PORT} zaten kullanımda, yeni port deneniyor...`);
+    app.listen(0);
+  } else {
+    console.error('Sunucu başlatma hatası:', error.message);
   }
-  process.exit(1);
 });
 
 module.exports = app;
