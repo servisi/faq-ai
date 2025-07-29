@@ -304,13 +304,15 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   let { title, num_questions, language = 'tr', answer_length = 'short', force = false } = req.body;
 
+  num_questions = Number(num_questions); // Sayı olarak dönüştür
+
+  if (isNaN(num_questions) || num_questions < 5 || num_questions > 15) {
+    return res.status(400).json({ error: 'Number of questions must be between 5 and 15' });
+  }
+
   if (user.plan === 'free') {
     num_questions = 5;
     answer_length = 'short';
-  }
-
-  if (num_questions < 5 || num_questions > 15) {
-    return res.status(400).json({ error: 'Number of questions must be between 5 and 15' });
   }
 
   // Önbellek kontrolü
@@ -318,6 +320,12 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   const cachedFaq = await FaqCache.findOne(cacheKey);
   if (cachedFaq && !force) {
     return res.json({ faqs: cachedFaq.faqs, cached: true });
+  }
+
+  // Kredi kontrolü (cache yoksa veya force=true ise)
+  const required_credits = Math.ceil(num_questions / 5);
+  if (user.credits < required_credits) {
+    return res.status(400).json({ error: 'no_credits' });
   }
 
   let recentNews = '';
@@ -382,10 +390,11 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
       return res.status(500).json({ error: 'AI response parse failed' });
     }
 
-    // Kredi hesabı: 5 soru-cevap = 1 kredi
-    const required_credits = Math.ceil(num_questions / 5);
-    
-    // Kredi düşür (force olsa bile)
+    if (faqs.length !== num_questions) {
+      return res.status(500).json({ error: 'AI generated wrong number of FAQs' });
+    }
+
+    // Kredi düşür
     user.credits -= required_credits;
     await user.save();
 
