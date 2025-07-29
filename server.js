@@ -340,9 +340,9 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   const length_instruction = answer_length === 'long' ? 'orta uzunlukta, detaylı' : 'kısa ve öz';
   const no_contact_instruction = 'Cevaplarda kesinlikle telefon numarası, site adresi veya iletişim bilgisi olmasın.';
   if (language === 'tr') {
-    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine ${length_instruction}, bilgilendirici cevap ver. ${no_contact_instruction} Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
+    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine ${length_instruction}, bilgilendirici cevap ver. ${no_contact_instruction} Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]} `;
   } else {
-    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide ${length_instruction}, informative answers for each. ${no_contact_instruction} Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
+    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide ${length_instruction}, informative answers for each. ${no_contact_instruction} Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]} `;
   }
 
   try {
@@ -870,36 +870,36 @@ app.get('/admin', adminAuth, (req, res) => {
             const stats = await response.json();
             
             const statsGrid = document.getElementById('statsGrid');
-            statsGrid.innerHTML = \`
+            statsGrid.innerHTML = `
               <div class="stat-card">
-                <div class="stat-number">\${stats.total_users}</div>
+                <div class="stat-number">${stats.total_users}</div>
                 <div class="stat-label">Toplam Kullanıcı</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.free_users}</div>
+                <div class="stat-number">${stats.free_users}</div>
                 <div class="stat-label">Free Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.pro_users}</div>
+                <div class="stat-number">${stats.pro_users}</div>
                 <div class="stat-label">Pro Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.agency_users}</div>
+                <div class="stat-number">${stats.agency_users}</div>
                 <div class="stat-label">Agency Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.active_users}</div>
+                <div class="stat-number">${stats.active_users}</div>
                 <div class="stat-label">Aktif Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">v\${stats.plugin_version}</div>
+                <div class="stat-number">v${stats.plugin_version}</div>
                 <div class="stat-label">Mevcut Plugin Versiyonu</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.last_updated}</div>
+                <div class="stat-number">${stats.last_updated}</div>
                 <div class="stat-label">Son Güncelleme</div>
               </div>
-            \`;
+            `;
           } catch (error) {
             console.error('Stats yükleme hatası:', error);
           }
@@ -928,26 +928,26 @@ app.get('/admin', adminAuth, (req, res) => {
             const resultDiv = document.getElementById('pluginUpdateResult');
             
             if (response.ok) {
-              resultDiv.innerHTML = \`
+              resultDiv.innerHTML = `
                 <div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v\${result.updated_version.version}
+                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v${result.updated_version.version}
                 </div>
-              \`;
+              `;
               // Form'u temizle
               document.getElementById('pluginVersionForm').reset();
             } else {
-              resultDiv.innerHTML = \`
+              resultDiv.innerHTML = `
                 <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Hata:</strong> \${result.error}
+                  <strong>Hata:</strong> ${result.error}
                 </div>
-              \`;
+              `;
             }
           } catch (error) {
-            document.getElementById('pluginUpdateResult').innerHTML = \`
+            document.getElementById('pluginUpdateResult').innerHTML = `
               <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                <strong>Hata:</strong> \${error.message}
+                <strong>Hata:</strong> ${error.message}
               </div>
-            \`;
+            `;
           }
         });
 
@@ -977,7 +977,7 @@ app.get('/admin', adminAuth, (req, res) => {
                 '<td>' + createdAt + '</td>' +
                 '<td>' + deletedAt + '</td>' +
                 '<td>' +
-                  '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
+                  '<button onclick="openModal(\'' + user._id + '\', \'' + user.plan + '\', ' + user.credits + ', \'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\')">Düzenle</button>' +
                 '</td>';
               tbody.appendChild(tr);
             });
