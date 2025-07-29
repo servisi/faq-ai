@@ -8,8 +8,6 @@ const axios = require('axios');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const basicAuth = require('basic-auth');
-const fs = require('fs');
-const path = require('path');
 
 dotenv.config();
 const app = express();
@@ -30,18 +28,17 @@ app.use('/api/generate-faq', limiter);
 
 mongoose.connect(process.env.MONGO_URI);
 
-// Kullanıcı şemasına telefon ve site alanları eklendi
+// Kullanıcı şeması
 const UserSchema = new mongoose.Schema({
   email: String,
-  phone: String, // Yeni alan
-  site: String,  // Yeni alan
+  phone: String,
+  site: String,
   credits: { type: Number, default: 20 },
   lastReset: { type: Date, default: Date.now },
   plan: { type: String, default: 'free' },
   expirationDate: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },
-  deletedAt: { type: Date, default: null },
-  deactivatedAt: { type: Date, default: null }
+  deletedAt: { type: Date, default: null }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -51,8 +48,8 @@ const FaqCacheSchema = new mongoose.Schema({
   language: String,
   num_questions: Number,
   answer_length: String,
-  faqs: Array, // Array of {question, answer}
-  createdAt: { type: Date, default: Date.now, expires: '7d' } // expire after 7 days
+  faqs: Array,
+  createdAt: { type: Date, default: Date.now, expires: '7d' }
 });
 const FaqCache = mongoose.model('FaqCache', FaqCacheSchema);
 
@@ -112,9 +109,7 @@ async function resetCreditsIfNeeded(user) {
   }
 }
 
-// === WORDPRESS GÜNCELLEME ENDPOİNTLERİ === //
-
-// Plugin Version Schema - MongoDB'de saklayacağız
+// Plugin Version Schema
 const PluginVersionSchema = new mongoose.Schema({
   plugin_name: { type: String, default: 'sss-ai' },
   version: { type: String, default: '3.1' },
@@ -131,7 +126,6 @@ async function getPluginVersion() {
   try {
     let version = await PluginVersion.findOne({ plugin_name: 'sss-ai' });
     if (!version) {
-      // İlk kez çalışıyorsa default değerleri kaydet
       version = new PluginVersion({
         plugin_name: 'sss-ai',
         version: '3.1',
@@ -140,9 +134,9 @@ async function getPluginVersion() {
         description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem.',
         changelog: `
           <h4>Versiyon 3.1</h4>
-    <ul>
-      <li>Performans iyileştirmeleri ve önbellek sistemi</li>
-    </ul>
+          <ul>
+            <li>Performans iyileştirmeleri ve önbellek sistemi</li>
+          </ul>
         `
       });
       await version.save();
@@ -150,7 +144,6 @@ async function getPluginVersion() {
     return version;
   } catch (error) {
     console.error('Plugin version fetch error:', error);
-    // Fallback değerler
     return {
       version: '3.1',
       tested: '6.8',
@@ -183,12 +176,12 @@ app.get('/wp-update-check', async (req, res) => {
   }
 });
 
-// Plugin dosyası indirme endpoint'i (PUBLIC - WordPress için)
+// Plugin dosyası indirme endpoint'i
 app.get('/download/sss-ai.zip', (req, res) => {
   res.redirect('https://github.com/servisi/faq-ai/releases/download/sss-ai.zip');
 });
 
-// Admin-only download endpoint (eski versiyon, sadmin için)
+// Admin-only download endpoint
 app.get('/admin/download/sss-ai-v3.1.zip', adminAuth, (req, res) => {
   res.json({
     message: 'Admin plugin download would be served here',
@@ -203,25 +196,23 @@ app.get('/changelog/sss-ai', async (req, res) => {
     plugin: 'SSS Oluşturucu',
     current_version: pluginVersion.version,
     changelog: pluginVersion.changelog,
-    download_structure: 'sss-ai/sss-ai.php', // ZIP içi yapı bilgisi
+    download_structure: 'sss-ai/sss-ai.php',
     important_note: 'ZIP dosyası içinde klasör adı "sss-ai" olmalı, başka bir ad OLMAMALI!'
   });
 });
 
 // === MEVCUT ENDPOİNTLER === //
 
-// Kayıt Endpoint (telefon ve site bilgilerini kaydet)
+// Kayıt Endpoint
 app.post('/register', async (req, res) => {
   const { email, phone, site } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
   
   let user = await User.findOne({ email });
   if (user) {
-    // Mevcut kullanıcı için phone ve site'yi güncelle
     if (phone) user.phone = phone;
     if (site) user.site = site;
     
-    // Hesap silinmişse yeniden aktif et
     if (user.deletedAt) {
       user.deletedAt = null;
     }
@@ -234,8 +225,8 @@ app.post('/register', async (req, res) => {
   
   user = new User({ 
     email,
-    phone, // Telefon bilgisi kaydediliyor
-    site,  // Site URL bilgisi kaydediliyor
+    phone,
+    site,
     createdAt: new Date()
   });
   
@@ -259,12 +250,11 @@ app.post('/delete-account', authenticate, async (req, res) => {
   }
 });
 
-// User Info Endpoint (telefon ve site bilgilerini döndür)
+// User Info Endpoint
 app.get('/user-info', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  // Hesap silinmişse hata döndür
   if (user.deletedAt) {
     return res.status(401).json({ error: 'Account deleted' });
   }
@@ -284,17 +274,16 @@ app.get('/user-info', authenticate, async (req, res) => {
     remainingDays: remainingDays,
     createdAt: user.createdAt,
     deletedAt: user.deletedAt,
-    phone: user.phone, // Telefon bilgisi
-    site: user.site    // Site URL bilgisi
+    phone: user.phone,
+    site: user.site
   });
 });
 
-// FAQ Üret Endpoint
+// FAQ Üret Endpoint (TAMAMEN YENİLENDİ)
 app.post('/api/generate-faq', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  // Hesap silinmişse hata döndür
   if (user.deletedAt) {
     return res.status(401).json({ error: 'Account deleted' });
   }
@@ -304,122 +293,164 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   let { title, num_questions, language = 'tr', answer_length = 'short', force = false } = req.body;
 
-  num_questions = Number(num_questions); // Sayı olarak dönüştür
-
-  if (isNaN(num_questions) || num_questions < 5 || num_questions > 15) {
-    return res.status(400).json({ error: 'Number of questions must be between 5 and 15' });
-  }
-
+  // 1. Kredi hesaplama düzeltildi: her 5 soru için 1 kredi
+  const required_credits = Math.ceil(num_questions / 5);
+  
+  // 2. Plan kontrolü ve parametre düzeltmeleri
   if (user.plan === 'free') {
     num_questions = 5;
     answer_length = 'short';
-  }
-
-  // Önbellek kontrolü
-  const cacheKey = { title, language, num_questions, answer_length };
-  const cachedFaq = await FaqCache.findOne(cacheKey);
-  if (cachedFaq && !force) {
-    return res.json({ faqs: cachedFaq.faqs, cached: true });
-  }
-
-  // Kredi kontrolü (cache yoksa veya force=true ise)
-  const required_credits = Math.ceil(num_questions / 5);
-  if (user.credits < required_credits) {
-    return res.status(400).json({ error: 'no_credits' });
-  }
-
-  let recentNews = '';
-  let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news'; // Dil bazında uyarla
-  let serperHl = language; // hl=tr, en, etc.
-  let serperGl = language === 'tr' ? 'tr' : 'us'; // Örnek, ülke bazında uyarla (daha fazla dil için genişlet)
-
-  try {
-    // Serper API için timeout ekle
-    const searchResponse = await axios.post('https://google.serper.dev/search', {
-      q: `${title} ${searchQuerySuffix}`,
-      num: 5,
-      tbs: 'qdr:w',
-      hl: serperHl,
-      gl: serperGl
-    }, {
-      headers: {
-        'X-API-KEY': SERPER_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000 // 15 saniye timeout
-    });
-    const results = searchResponse.data.organic || [];
-    recentNews = results.map(result => `${result.title}: ${result.snippet} (Kaynak: ${result.link})`).join('\n');
-  } catch (searchErr) {
-    console.error('Search error:', searchErr);
-    recentNews = language === 'tr' ? 'Güncel haberler tespit edilemedi.' : 'Recent news could not be detected.';
-  }
-
-  // Prompt'u dil bazında uyarla (daha fazla dil için switch ekle)
-  let prompt;
-  const length_instruction = answer_length === 'long' ? 'orta uzunlukta, detaylı' : 'kısa ve öz';
-  const no_contact_instruction = 'Cevaplarda kesinlikle telefon numarası, site adresi veya iletişim bilgisi olmasın.';
-  if (language === 'tr') {
-    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine ${length_instruction}, bilgilendirici cevap ver. ${no_contact_instruction} Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
   } else {
-    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide ${length_instruction}, informative answers for each. ${no_contact_instruction} Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
+    num_questions = Math.min(Math.max(num_questions, 5), 15);
   }
 
-  try {
-    // OpenAI çağrısı için timeout ekle
-    const openaiPromise = openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: "json_object" }
+  // 3. Önbellek anahtarı
+  const cacheKey = { 
+    title, 
+    language, 
+    num_questions, 
+    answer_length 
+  };
+
+  // 4. Önbellek kontrolü (tam eşleşme)
+  const exactCache = await FaqCache.findOne(cacheKey);
+  
+  // 5. Tam eşleşme varsa hemen dön
+  if (exactCache && !force) {
+    return res.json({ 
+      faqs: exactCache.faqs, 
+      cached: true 
     });
-    
-    // 90 saniye timeout ile OpenAI çağrısı
-    const completion = await Promise.race([
-      openaiPromise,
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('OpenAI timeout')), 90000)
-      )
-    ]);
-    
-    let content = completion.choices[0].message.content;
-    let faqs;
+  }
+
+  // 6. Yakın önbellek ara (sadece başlık ve dil)
+  const nearestCache = await FaqCache.findOne({
+    title,
+    language
+  }).sort({ createdAt: -1 });
+
+  // 7. Kredi kontrolü (sadece yeni üretim için)
+  if (!exactCache && user.credits < required_credits) {
+    return res.status(400).json({ 
+      error: 'no_credits',
+      cached_faqs: nearestCache?.faqs || []
+    });
+  }
+
+  // 8. Arka planda üretim fonksiyonu
+  const generateFAQs = async () => {
+    let recentNews = '';
+    let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news';
+    let serperHl = language;
+    let serperGl = language === 'tr' ? 'tr' : 'us';
+
     try {
-      faqs = JSON.parse(content).faqs;
-    } catch (parseErr) {
-      console.error('JSON parse error:', parseErr, content);
-      return res.status(500).json({ error: 'AI response parse failed' });
+      const searchResponse = await axios.post('https://google.serper.dev/search', {
+        q: `${title} ${searchQuerySuffix}`,
+        num: 5,
+        tbs: 'qdr:w',
+        hl: serperHl,
+        gl: serperGl
+      }, {
+        headers: {
+          'X-API-KEY': SERPER_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+      
+      const results = searchResponse.data.organic || [];
+      recentNews = results.map(result => `${result.title}: ${result.snippet} (Kaynak: ${result.link})`).join('\n');
+    } catch (searchErr) {
+      console.error('Search error:', searchErr);
+      recentNews = language === 'tr' ? 'Güncel haberler tespit edilemedi.' : 'Recent news could not be detected.';
     }
 
-    if (faqs.length !== num_questions) {
-      return res.status(500).json({ error: 'AI generated wrong number of FAQs' });
+    // Prompt oluşturma
+    let prompt;
+    const length_instruction = answer_length === 'long' ? 'orta uzunlukta, detaylı' : 'kısa ve öz';
+    const no_contact_instruction = 'Cevaplarda kesinlikle telefon numarası, site adresi veya iletişim bilgisi olmasın.';
+    
+    if (language === 'tr') {
+      prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine ${length_instruction}, bilgilendirici cevap ver. ${no_contact_instruction} Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
+    } else {
+      prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide ${length_instruction}, informative answers for each. ${no_contact_instruction} Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
     }
 
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: "json_object" },
+        timeout: 90000
+      });
+      
+      let content = completion.choices[0].message.content;
+      let faqs;
+      try {
+        faqs = JSON.parse(content).faqs;
+      } catch (parseErr) {
+        console.error('JSON parse error:', parseErr, content);
+        return [];
+      }
+
+      if (faqs.length !== num_questions) {
+        console.error('AI generated wrong number of FAQs');
+        return [];
+      }
+
+      return faqs;
+    } catch (err) {
+      console.error('OpenAI error:', err);
+      return [];
+    }
+  };
+
+  // 9. Önbellek yoksa arka planda üret ve kaydet
+  if (!exactCache) {
     // Kredi düşür
     user.credits -= required_credits;
     await user.save();
 
-    // Önbelleğe kaydet veya güncelle
-    await FaqCache.findOneAndUpdate(cacheKey, {
-      ...cacheKey,
-      faqs: faqs
-    }, { upsert: true, new: true });
-
-    res.json({ faqs });
-  } catch (err) {
-    console.error('OpenAI error:', err);
-    const errorMessage = err.message.includes('timeout') 
-      ? 'İşlem zaman aşımına uğradı' 
-      : err.message;
-    res.status(500).json({ error: errorMessage });
+    // Arka planda üretim başlat
+    setTimeout(async () => {
+      try {
+        const faqs = await generateFAQs();
+        
+        // Başarılı üretimde önbelleğe kaydet
+        if (faqs.length > 0) {
+          await FaqCache.findOneAndUpdate(cacheKey, {
+            ...cacheKey,
+            faqs: faqs
+          }, { upsert: true, new: true });
+        } else {
+          // Üretim başarısız olursa krediyi iade et
+          user.credits += required_credits;
+          await user.save();
+        }
+      } catch (bgError) {
+        console.error('Background generation error:', bgError);
+      }
+    }, 100); // 100ms sonra başlat
   }
+
+  // 10. Yanıtı döndür
+  res.json({ 
+    faqs: exactCache?.faqs || nearestCache?.faqs || [],
+    message: exactCache ? 
+      "Önbellekten yüklendi" : 
+      nearestCache ? 
+        "Benzer içerik yükleniyor, güncel FAQ'lar arka planda üretiliyor..." : 
+        "İlk kez üretiliyor, lütfen bekleyin..."
+  });
 });
 
-// Admin Users Endpoint (with search and plan filter) - telefon ve site bilgilerini ekledik
+// Admin Users Endpoint
 app.get('/admin/users', adminAuth, async (req, res) => {
   const { search, plan } = req.query;
   let query = {};
   if (plan && plan !== 'all') query.plan = plan;
-  if (search) query.email = { $regex: search, $options: 'i' }; // Email search, case-insensitive
+  if (search) query.email = { $regex: search, $options: 'i' };
   const users = await User.find(query, 'email phone site plan credits expirationDate lastReset createdAt deletedAt');
   res.json(users);
 });
@@ -438,7 +469,7 @@ app.post('/admin/update-user', adminAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-// Plugin istatistikleri endpoint'i (admin)
+// Plugin istatistikleri endpoint'i
 app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
@@ -467,7 +498,7 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
   }
 });
 
-// Plugin versiyonunu güncelleme endpoint'i (admin only) - DATABASE'e kaydeder
+// Plugin versiyonunu güncelleme endpoint'i
 app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   const { version, tested, description, changelog, download_url } = req.body;
   
@@ -476,7 +507,6 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   }
 
   try {
-    // Database'deki plugin versiyon bilgisini güncelle
     let pluginVersion = await PluginVersion.findOne({ plugin_name: 'sss-ai' });
     
     if (!pluginVersion) {
@@ -514,7 +544,7 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   }
 });
 
-// Admin Panel HTML Page (güncellenmiş versiyon)
+// Admin Panel HTML Page
 app.get('/admin', adminAuth, (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -537,7 +567,6 @@ app.get('/admin', adminAuth, (req, res) => {
           text-align: center;
         }
         
-        /* Tab System */
         .tab-container {
           margin-bottom: 30px;
         }
@@ -571,7 +600,6 @@ app.get('/admin', adminAuth, (req, res) => {
           display: block;
         }
 
-        /* Plugin Stats Card */
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -672,7 +700,6 @@ app.get('/admin', adminAuth, (req, res) => {
           background-color: #218838;
         }
         
-        /* Plugin Management Form */
         .plugin-form {
           background: white;
           padding: 20px;
@@ -700,7 +727,6 @@ app.get('/admin', adminAuth, (req, res) => {
           resize: vertical;
         }
 
-        /* Modal Stilleri */
         .modal {
           display: none;
           position: fixed;
@@ -750,7 +776,6 @@ app.get('/admin', adminAuth, (req, res) => {
           background-color: #218838;
         }
         
-        /* Responsive tasarım */
         @media (max-width: 768px) {
           #controls {
             flex-direction: column;
@@ -767,7 +792,6 @@ app.get('/admin', adminAuth, (req, res) => {
     <body>
       <h1>AI FAQ Admin Panel</h1>
       
-      <!-- Tab Navigation -->
       <div class="tab-container">
         <div class="tabs">
           <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
@@ -776,7 +800,6 @@ app.get('/admin', adminAuth, (req, res) => {
         </div>
       </div>
 
-      <!-- Users Tab -->
       <div id="users-tab" class="tab-content active">
         <h2>Kullanıcı Yönetimi</h2>
         <div id="controls">
@@ -807,7 +830,6 @@ app.get('/admin', adminAuth, (req, res) => {
         </table>
       </div>
 
-      <!-- Plugin Management Tab -->
       <div id="plugin-tab" class="tab-content">
         <h2>Plugin Sürüm Yönetimi</h2>
         <div class="plugin-form">
@@ -838,15 +860,11 @@ app.get('/admin', adminAuth, (req, res) => {
         <div id="pluginUpdateResult"></div>
       </div>
 
-      <!-- Stats Tab -->
       <div id="stats-tab" class="tab-content">
         <h2>Genel İstatistikler</h2>
-        <div class="stats-grid" id="statsGrid">
-          <!-- Stats will be loaded here -->
-        </div>
+        <div class="stats-grid" id="statsGrid"></div>
       </div>
 
-      <!-- Modal -->
       <div id="editModal" class="modal">
         <div class="modal-content">
           <h2>Kullanıcı Düzenle</h2>
@@ -870,22 +888,16 @@ app.get('/admin', adminAuth, (req, res) => {
       <script>
         let currentUserId = null;
 
-        // Tab switching
         function showTab(tabName) {
-          // Hide all tab contents
           document.querySelectorAll('.tab-content').forEach(tab => {
             tab.classList.remove('active');
           });
-          // Remove active class from all tabs
           document.querySelectorAll('.tab').forEach(tab => {
             tab.classList.remove('active');
           });
-          // Show selected tab content
           document.getElementById(tabName + '-tab').classList.add('active');
-          // Add active class to clicked tab
           event.target.classList.add('active');
           
-          // Load data for specific tabs
           if (tabName === 'users') {
             loadUsers();
           } else if (tabName === 'stats') {
@@ -893,7 +905,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // Load plugin statistics
         async function loadStats() {
           try {
             const response = await fetch('/admin/plugin-stats');
@@ -936,7 +947,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // Plugin version update
         document.getElementById('pluginVersionForm').addEventListener('submit', async function(e) {
           e.preventDefault();
           
@@ -964,7 +974,6 @@ app.get('/admin', adminAuth, (req, res) => {
                   <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v\${result.updated_version.version}
                 </div>
               \`;
-              // Form'u temizle
               document.getElementById('pluginVersionForm').reset();
             } else {
               resultDiv.innerHTML = \`
@@ -982,7 +991,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         });
 
-        // Kullanıcıları yükleme fonksiyonu
         async function loadUsers() {
           try {
             const search = document.getElementById('searchInput').value;
@@ -1013,7 +1021,6 @@ app.get('/admin', adminAuth, (req, res) => {
               tbody.appendChild(tr);
             });
             
-            // İstatistikleri güncelle
             updateStats();
           } catch (error) {
             console.error('Hata:', error);
@@ -1021,7 +1028,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // İstatistikleri güncelleme fonksiyonu
         async function updateStats() {
           try {
             const response = await fetch('/admin/users');
@@ -1035,7 +1041,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // Modal açma
         function openModal(userId, plan, credits, expiration) {
           currentUserId = userId;
           document.getElementById('editPlan').value = plan;
@@ -1044,12 +1049,10 @@ app.get('/admin', adminAuth, (req, res) => {
           document.getElementById('editModal').style.display = 'flex';
         }
 
-        // Modal kapama
         function closeModal() {
           document.getElementById('editModal').style.display = 'none';
         }
 
-        // Düzenleme gönderme
         async function submitEdit() {
           const plan = document.getElementById('editPlan').value;
           const credits = parseInt(document.getElementById('editCredits').value);
@@ -1078,10 +1081,8 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // İlk yükleme
         loadUsers();
 
-        // Modal dışına tıklayınca kapatma
         window.onclick = function(event) {
           const modal = document.getElementById('editModal');
           if (event.target === modal) {
@@ -1094,5 +1095,4 @@ app.get('/admin', adminAuth, (req, res) => {
   `);
 });
 
-// Vercel için export
 module.exports = app;
