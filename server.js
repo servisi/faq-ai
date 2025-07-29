@@ -41,7 +41,7 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20, // DEĞİŞİKLİK: Daha fazla esneklik için limiti artırdım
+  max: 20,
   message: 'Çok fazla istek, lütfen daha sonra tekrar deneyin.'
 });
 app.use('/api/generate-faq', limiter);
@@ -87,7 +87,7 @@ const FaqCacheSchema = new mongoose.Schema({
 const FaqCache = mongoose.model('FaqCache', FaqCacheSchema);
 
 const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY
 });
 const JWT_SECRET = process.env.JWT_SECRET;
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
@@ -240,31 +240,36 @@ app.post('/register', async (req, res) => {
   const { email, phone, site } = req.body;
   if (!email) return res.status(400).json({ error: 'Email gerekli' });
   
-  let user = await User.findOne({ email });
-  if (user) {
-    if (phone) user.phone = phone;
-    if (site) user.site = site;
-    
-    if (user.deletedAt) {
-      user.deletedAt = null;
+  try {
+    let user = await User.findOne({ email });
+    if (user) {
+      if (phone) user.phone = phone;
+      if (site) user.site = site;
+      
+      if (user.deletedAt) {
+        user.deletedAt = null;
+      }
+      
+      await user.save();
+      
+      const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
+      return res.json({ token });
     }
     
-    await user.save();
+    user = new User({ 
+      email,
+      phone,
+      site,
+      createdAt: new Date()
+    });
     
+    await user.save();
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
-    return res.json({ token });
+    res.json({ token });
+  } catch (error) {
+    console.error('Kayıt hatası:', error.message);
+    res.status(500).json({ error: 'Kayıt başarısız', details: error.message });
   }
-  
-  user = new User({ 
-    email,
-    phone,
-    site,
-    createdAt: new Date()
-  });
-  
-  await user.save();
-  const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token });
 });
 
 // Kullanıcı Silme Endpoint'i
@@ -279,215 +284,229 @@ app.post('/delete-account', authenticate, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Hesap silme hatası:', err.message);
-    res.status(500).json({ error: 'Hesap silme başarısız' });
+    res.status(500).json({ error: 'Hesap silme başarısız', details: err.message });
   }
 });
 
 // User Info Endpoint
 app.get('/user-info', authenticate, async (req, res) => {
-  const user = await User.findById(req.userId);
-  if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
 
-  if (user.deletedAt) {
-    return res.status(401).json({ error: 'Hesap silinmiş' });
+    if (user.deletedAt) {
+      return res.status(401).json({ error: 'Hesap silinmiş' });
+    }
+
+    await checkProExpiration(user);
+    await resetCreditsIfNeeded(user);
+
+    const now = new Date();
+    let remainingDays = 0;
+    if ((user.plan === 'pro' || user.plan === 'agency') && user.expirationDate) {
+      remainingDays = Math.max(0, Math.ceil((user.expirationDate - now) / (1000 * 60 * 60 * 24)));
+    }
+
+    res.json({
+      plan: user.plan === 'free' ? 'Ücretsiz Sürüm' : user.plan === 'pro' ? 'Pro Sürüm' : 'Agency Sürüm',
+      credits: user.credits,
+      remainingDays: remainingDays,
+      createdAt: user.createdAt,
+      deletedAt: user.deletedAt,
+      phone: user.phone,
+      site: user.site
+    });
+  } catch (error) {
+    console.error('Kullanıcı bilgisi hatası:', error.message);
+    res.status(500).json({ error: 'Kullanıcı bilgisi alınamadı', details: error.message });
   }
-
-  await checkProExpiration(user);
-  await resetCreditsIfNeeded(user);
-
-  const now = new Date();
-  let remainingDays = 0;
-  if ((user.plan === 'pro' || user.plan === 'agency') && user.expirationDate) {
-    remainingDays = Math.max(0, Math.ceil((user.expirationDate - now) / (1000 * 60 * 60 * 24)));
-  }
-
-  res.json({
-    plan: user.plan === 'free' ? 'Ücretsiz Sürüm' : user.plan === 'pro' ? 'Pro Sürüm' : 'Agency Sürüm',
-    credits: user.credits,
-    remainingDays: remainingDays,
-    createdAt: user.createdAt,
-    deletedAt: user.deletedAt,
-    phone: user.phone,
-    site: user.site
-  });
 });
 
-// FAQ Üret Endpoint (DEĞİŞİKLİK: Senkron üretim, daha net hata yönetimi)
+// FAQ Üret Endpoint
 app.post('/api/generate-faq', authenticate, async (req, res) => {
-  const user = await User.findById(req.userId);
-  if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
 
-  if (user.deletedAt) {
-    return res.status(401).json({ error: 'Hesap silinmiş' });
-  }
-
-  await checkProExpiration(user);
-  await resetCreditsIfNeeded(user);
-
-  let { title, num_questions, language = 'tr', answer_length = 'short', force = false } = req.body;
-
-  // 1. Kredi hesaplama
-  const required_credits = Math.ceil(num_questions / 5);
-  
-  // 2. Plan kontrolü ve parametre düzeltmeleri
-  if (user.plan === 'free') {
-    num_questions = 5;
-    answer_length = 'short';
-  } else {
-    num_questions = Math.min(Math.max(num_questions, 5), 15);
-  }
-
-  // 3. Önbellek anahtarı
-  const cacheKey = { 
-    title, 
-    language, 
-    num_questions, 
-    answer_length 
-  };
-
-  // 4. Önbellek kontrolü (tam eşleşme)
-  const exactCache = await FaqCache.findOne(cacheKey);
-  
-  // 5. Tam eşleşme varsa hemen dön
-  if (exactCache && !force) {
-    return res.json({ 
-      faqs: exactCache.faqs, 
-      cached: true,
-      message: 'Önbellekten yüklendi'
-    });
-  }
-
-  // 6. Yakın önbellek ara (sadece başlık ve dil)
-  const nearestCache = await FaqCache.findOne({
-    title,
-    language
-  }).sort({ createdAt: -1 });
-
-  // 7. Kredi kontrolü
-  if (!exactCache && user.credits < required_credits) {
-    return res.status(400).json({ 
-      error: 'no_credits',
-      message: 'Yetersiz kredi',
-      cached_faqs: nearestCache?.faqs || []
-    });
-  }
-
-  // 8. SSS üretim fonksiyonu
-  const generateFAQs = async () => {
-    let recentNews = '';
-    let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news';
-    let serperHl = language;
-    let serperGl = language === 'tr' ? 'tr' : 'us';
-
-    try {
-      const searchResponse = await axios.post('https://google.serper.dev/search', {
-        q: `${title} ${searchQuerySuffix}`,
-        num: 5,
-        tbs: 'qdr:w',
-        hl: serperHl,
-        gl: serperGl
-      }, {
-        headers: {
-          'X-API-KEY': SERPER_API_KEY,
-          'Content-Type': 'application/json'
-        },
-        timeout: 15000
-      });
-      
-      const results = searchResponse.data.organic || [];
-      recentNews = results.map(result => `${result.title}: ${result.snippet} (Kaynak: ${result.link})`).join('\n');
-    } catch (searchErr) {
-      console.error('Serper API hatası:', searchErr.message);
-      recentNews = language === 'tr' ? 'Güncel haberler tespit edilemedi.' : 'Recent news could not be detected.';
+    if (user.deletedAt) {
+      return res.status(401).json({ error: 'Hesap silinmiş' });
     }
 
-    // Prompt oluşturma
-    let prompt;
-    const length_instruction = answer_length === 'long' ? 'orta uzunlukta, detaylı' : 'kısa ve öz';
-    const no_contact_instruction = 'Cevaplarda kesinlikle telefon numarası, site adresi veya iletişim bilgisi olmasın.';
+    await checkProExpiration(user);
+    await resetCreditsIfNeeded(user);
+
+    let { title, num_questions, language = 'tr', answer_length = 'short', force = false } = req.body;
+
+    if (!title || !num_questions) {
+      return res.status(400).json({ error: 'Başlık ve soru sayısı gerekli' });
+    }
+
+    // Kredi hesaplama
+    const required_credits = Math.ceil(num_questions / 5);
     
-    if (language === 'tr') {
-      prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine ${length_instruction}, bilgilendirici cevap ver. ${no_contact_instruction} Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
+    // Plan kontrolü ve parametre düzeltmeleri
+    if (user.plan === 'free') {
+      num_questions = 5;
+      answer_length = 'short';
     } else {
-      prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide ${length_instruction}, informative answers for each. ${no_contact_instruction} Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
+      num_questions = Math.min(Math.max(num_questions, 5), 15);
     }
 
-    try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: "json_object" },
-        timeout: 90000
+    // Önbellek anahtarı
+    const cacheKey = { 
+      title, 
+      language, 
+      num_questions, 
+      answer_length 
+    };
+
+    // Önbellek kontrolü (tam eşleşme)
+    const exactCache = await FaqCache.findOne(cacheKey);
+    
+    // Tam eşleşme varsa hemen dön
+    if (exactCache && !force) {
+      return res.json({ 
+        faqs: exactCache.faqs, 
+        cached: true,
+        message: 'Önbellekten yüklendi'
       });
-      
-      let content = completion.choices[0].message.content;
-      let faqs;
-      try {
-        faqs = JSON.parse(content).faqs;
-      } catch (parseErr) {
-        console.error('JSON parse hatası:', parseErr.message, content);
-        return [];
-      }
-
-      if (faqs.length !== num_questions) {
-        console.error('AI yanlış sayıda SSS üretti:', faqs.length, 'beklenen:', num_questions);
-        return [];
-      }
-
-      return faqs;
-    } catch (err) {
-      console.error('OpenAI hatası:', err.message);
-      return [];
     }
-  };
 
-  // 9. Önbellek yoksa üret ve bekle
-  if (!exactCache) {
-    // Kredi düşür
-    user.credits -= required_credits;
-    await user.save();
+    // Yakın önbellek ara
+    const nearestCache = await FaqCache.findOne({
+      title,
+      language
+    }).sort({ createdAt: -1 });
 
-    try {
-      const faqs = await generateFAQs();
-      
-      if (faqs.length > 0) {
-        // Önbelleğe kaydet
-        await FaqCache.findOneAndUpdate(cacheKey, {
-          ...cacheKey,
-          faqs: faqs
-        }, { upsert: true, new: true });
-        
-        res.json({ 
-          faqs: faqs,
-          message: 'Yeni üretildi ve önbelleğe alındı'
-        });
-      } else {
-        // Üretim başarısız, krediyi iade et
-        user.credits += required_credits;
-        await user.save();
-        res.status(500).json({ 
-          error: 'generation_failed',
-          message: 'SSS üretimi başarısız oldu',
-          cached_faqs: nearestCache?.faqs || []
-        });
-      }
-    } catch (error) {
-      console.error('Üretim hatası:', error.message);
-      // Hata durumunda krediyi iade et
-      user.credits += required_credits;
-      await user.save();
-      res.status(500).json({ 
-        error: 'server_error',
-        message: 'Sunucu hatası: SSS üretimi başarısız',
-        details: error.message,
+    // Kredi kontrolü
+    if (!exactCache && user.credits < required_credits) {
+      return res.status(400).json({ 
+        error: 'no_credits',
+        message: 'Yetersiz kredi',
         cached_faqs: nearestCache?.faqs || []
       });
     }
-  } else {
-    res.json({ 
-      faqs: exactCache.faqs,
-      message: 'Önbellekten yüklendi'
-    });
+
+    // SSS üretim fonksiyonu
+    const generateFAQs = async () => {
+      let recentNews = '';
+      let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news';
+      let serperHl = language;
+      let serperGl = language === 'tr' ? 'tr' : 'us';
+
+      try {
+        const searchResponse = await axios.post('https://google.serper.dev/search', {
+          q: `${title} ${searchQuerySuffix}`,
+          num: 5,
+          tbs: 'qdr:w',
+          hl: serperHl,
+          gl: serperGl
+        }, {
+          headers: {
+            'X-API-KEY': SERPER_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        });
+        
+        const results = searchResponse.data.organic || [];
+        recentNews = results.map(result => `${result.title}: ${result.snippet} (Kaynak: ${result.link})`).join('\n');
+      } catch (searchErr) {
+        console.error('Serper API hatası:', searchErr.message);
+        recentNews = language === 'tr' ? 'Güncel haberler tespit edilemedi.' : 'Recent news could not be detected.';
+      }
+
+      // Prompt oluşturma
+      let prompt;
+      const length_instruction = answer_length === 'long' ? 'orta uzunlukta, detaylı' : 'kısa ve öz';
+      const no_contact_instruction = 'Cevaplarda kesinlikle telefon numarası, site adresi veya iletişim bilgisi olmasın.';
+      
+      if (language === 'tr') {
+        prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine ${length_instruction}, bilgilendirici cevap ver. ${no_contact_instruction} Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`
+      } else {
+        prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide ${length_instruction}, informative answers for each. ${no_contact_instruction} Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`
+      }
+
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          max_tokens: 1500
+        });
+        
+        let content = completion.choices[0].message.content;
+        let faqs;
+        try {
+          faqs = JSON.parse(content).faqs;
+        } catch (parseErr) {
+          console.error('JSON parse hatası:', parseErr.message, content);
+          return [];
+        }
+
+        if (!Array.isArray(faqs) || faqs.length !== num_questions) {
+          console.error('AI yanlış sayıda SSS üretti:', faqs.length, 'beklenen:', num_questions);
+          return [];
+        }
+
+        return faqs;
+      } catch (err) {
+        console.error('OpenAI hatası:', err.message);
+        return [];
+      }
+    };
+
+    // Önbellek yoksa üret ve bekle
+    if (!exactCache) {
+      // Kredi düşür
+      user.credits -= required_credits;
+      await user.save();
+
+      try {
+        const faqs = await generateFAQs();
+        
+        if (faqs.length > 0) {
+          // Önbelleğe kaydet
+          await FaqCache.findOneAndUpdate(cacheKey, {
+            ...cacheKey,
+            faqs: faqs
+          }, { upsert: true, new: true });
+          
+          res.json({ 
+            faqs: faqs,
+            message: 'Yeni üretildi ve önbelleğe alındı'
+          });
+        } else {
+          // Üretim başarısız, krediyi iade et
+          user.credits += required_credits;
+          await user.save();
+          res.status(500).json({ 
+            error: 'generation_failed',
+            message: 'SSS üretimi başarısız oldu',
+            cached_faqs: nearestCache?.faqs || []
+          });
+        }
+      } catch (error) {
+        console.error('Üretim hatası:', error.message);
+        // Hata durumunda krediyi iade et
+        user.credits += required_credits;
+        await user.save();
+        res.status(500).json({ 
+          error: 'server_error',
+          message: 'Sunucu hatası: SSS üretimi başarısız',
+          details: error.message,
+          cached_faqs: nearestCache?.faqs || []
+        });
+      }
+    } else {
+      res.json({ 
+        faqs: exactCache.faqs,
+        message: 'Önbellekten yüklendi'
+      });
+    }
+  } catch (error) {
+    console.error('Genel hata:', error.message);
+    res.status(500).json({ error: 'Sunucu hatası', details: error.message });
   }
 });
 
@@ -623,7 +642,6 @@ app.get('/admin', adminAuth, (req, res) => {
           font-size: 2em;
           text-align: center;
         }
-        
         .tab-container {
           margin-bottom: 30px;
         }
@@ -656,7 +674,6 @@ app.get('/admin', adminAuth, (req, res) => {
         .tab-content.active {
           display: block;
         }
-
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -679,7 +696,6 @@ app.get('/admin', adminAuth, (req, res) => {
           color: #666;
           margin-top: 5px;
         }
-
         #controls {
           display: flex;
           flex-wrap: wrap;
@@ -756,7 +772,6 @@ app.get('/admin', adminAuth, (req, res) => {
         td button:hover {
           background-color: #218838;
         }
-        
         .plugin-form {
           background: white;
           padding: 20px;
@@ -783,7 +798,6 @@ app.get('/admin', adminAuth, (req, res) => {
           height: 120px;
           resize: vertical;
         }
-
         .modal {
           display: none;
           position: fixed;
@@ -832,7 +846,6 @@ app.get('/admin', adminAuth, (req, res) => {
         .modal-content .submit-btn:hover {
           background-color: #218838;
         }
-        
         @media (max-width: 768px) {
           #controls {
             flex-direction: column;
