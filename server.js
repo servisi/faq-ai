@@ -20,10 +20,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting (artırıldı: 1 dakikada 30 istek)
+// Rate limiting - Test için limitleri arttırdım, production'da düşür
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,
+  max: 30, // Artırdım, eskisi 10'du
   message: 'Too many requests, please try again later.'
 });
 app.use('/api/generate-faq', limiter);
@@ -280,6 +280,7 @@ app.get('/user-info', authenticate, async (req, res) => {
 
 // FAQ Üret Endpoint
 app.post('/api/generate-faq', authenticate, async (req, res) => {
+  console.log('FAQ generate request received:', req.body); // Debug log eklendi
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -363,7 +364,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
     res.json({ faqs });
   } catch (err) {
-    console.error('OpenAI error:', err);
+    console.error('OpenAI error:', err.message); // Daha detaylı error log
     res.status(500).json({ error: err.message });
   }
 });
@@ -421,7 +422,7 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
   }
 });
 
-// Admin versiyonunu güncelleme endpoint'i (admin only) - DATABASE'e kaydeder
+// Plugin versiyonunu güncelleme endpoint'i (admin only) - DATABASE'e kaydeder
 app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   const { version, tested, description, changelog, download_url } = req.body;
   
