@@ -20,10 +20,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting - Test için limitleri arttırdım, production'da düşür
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30, // Artırdım, eskisi 10'du
+  max: 10,
   message: 'Too many requests, please try again later.'
 });
 app.use('/api/generate-faq', limiter);
@@ -280,7 +280,6 @@ app.get('/user-info', authenticate, async (req, res) => {
 
 // FAQ Üret Endpoint
 app.post('/api/generate-faq', authenticate, async (req, res) => {
-  console.log('FAQ generate request received:', req.body); // Debug log eklendi
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -315,6 +314,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   let serperGl = language === 'tr' ? 'tr' : 'us'; // Örnek, ülke bazında uyarla (daha fazla dil için genişlet)
 
   try {
+    // Serper API için timeout ekle
     const searchResponse = await axios.post('https://google.serper.dev/search', {
       q: `${title} ${searchQuerySuffix}`,
       num: 5,
@@ -325,7 +325,8 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
       headers: {
         'X-API-KEY': SERPER_API_KEY,
         'Content-Type': 'application/json'
-      }
+      },
+      timeout: 15000 // 15 saniye timeout
     });
     const results = searchResponse.data.organic || [];
     recentNews = results.map(result => `${result.title}: ${result.snippet} (Kaynak: ${result.link})`).join('\n');
@@ -345,11 +346,21 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   }
 
   try {
-    const completion = await openai.chat.completions.create({
+    // OpenAI çağrısı için timeout ekle
+    const openaiPromise = openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: "json_object" }
     });
+    
+    // 45 saniye timeout ile OpenAI çağrısı
+    const completion = await Promise.race([
+      openaiPromise,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('OpenAI timeout')), 45000)
+      )
+    ]);
+    
     let content = completion.choices[0].message.content;
     let faqs;
     try {
@@ -364,8 +375,11 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
     res.json({ faqs });
   } catch (err) {
-    console.error('OpenAI error:', err.message); // Daha detaylı error log
-    res.status(500).json({ error: err.message });
+    console.error('OpenAI error:', err);
+    const errorMessage = err.message.includes('timeout') 
+      ? 'İşlem zaman aşımına uğradı' 
+      : err.message;
+    res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -856,36 +870,36 @@ app.get('/admin', adminAuth, (req, res) => {
             const stats = await response.json();
             
             const statsGrid = document.getElementById('statsGrid');
-            statsGrid.innerHTML = `
+            statsGrid.innerHTML = \`
               <div class="stat-card">
-                <div class="stat-number">${stats.total_users}</div>
+                <div class="stat-number">\${stats.total_users}</div>
                 <div class="stat-label">Toplam Kullanıcı</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.free_users}</div>
+                <div class="stat-number">\${stats.free_users}</div>
                 <div class="stat-label">Free Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.pro_users}</div>
+                <div class="stat-number">\${stats.pro_users}</div>
                 <div class="stat-label">Pro Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.agency_users}</div>
+                <div class="stat-number">\${stats.agency_users}</div>
                 <div class="stat-label">Agency Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.active_users}</div>
+                <div class="stat-number">\${stats.active_users}</div>
                 <div class="stat-label">Aktif Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">v${stats.plugin_version}</div>
+                <div class="stat-number">v\${stats.plugin_version}</div>
                 <div class="stat-label">Mevcut Plugin Versiyonu</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.last_updated}</div>
+                <div class="stat-number">\${stats.last_updated}</div>
                 <div class="stat-label">Son Güncelleme</div>
               </div>
-            `;
+            \`;
           } catch (error) {
             console.error('Stats yükleme hatası:', error);
           }
@@ -914,26 +928,26 @@ app.get('/admin', adminAuth, (req, res) => {
             const resultDiv = document.getElementById('pluginUpdateResult');
             
             if (response.ok) {
-              resultDiv.innerHTML = `
+              resultDiv.innerHTML = \`
                 <div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v${result.updated_version.version}
+                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v\${result.updated_version.version}
                 </div>
-              `;
+              \`;
               // Form'u temizle
               document.getElementById('pluginVersionForm').reset();
             } else {
-              resultDiv.innerHTML = `
+              resultDiv.innerHTML = \`
                 <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Hata:</strong> ${result.error}
+                  <strong>Hata:</strong> \${result.error}
                 </div>
-              `;
+              \`;
             }
           } catch (error) {
-            document.getElementById('pluginUpdateResult').innerHTML = `
+            document.getElementById('pluginUpdateResult').innerHTML = \`
               <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                <strong>Hata:</strong> ${error.message}
+                <strong>Hata:</strong> \${error.message}
               </div>
-            `;
+            \`;
           }
         });
 
@@ -963,7 +977,7 @@ app.get('/admin', adminAuth, (req, res) => {
                 '<td>' + createdAt + '</td>' +
                 '<td>' + deletedAt + '</td>' +
                 '<td>' +
-                  '<button onclick="openModal(\'' + user._id + '\', \'' + user.plan + '\', ' + user.credits + ', \'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\')">Düzenle</button>' +
+                  '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
                 '</td>';
               tbody.appendChild(tr);
             });
