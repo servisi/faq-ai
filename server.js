@@ -93,7 +93,7 @@ async function resetCreditsIfNeeded(user) {
   const now = new Date();
   if (now.getMonth() !== user.lastReset.getMonth() || now.getFullYear() !== user.lastReset.getFullYear()) {
     let credits = 20;
-    if (user.plan === 'pro') credits = 160;
+    if (user.plan === 'pro') credits = 120;
     if (user.plan === 'agency') credits = 1000;
     user.credits = credits;
     user.lastReset = now;
