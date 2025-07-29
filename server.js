@@ -302,7 +302,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   await checkProExpiration(user);
   await resetCreditsIfNeeded(user);
 
-  let { title, num_questions, language = 'tr', answer_length = 'short' } = req.body;
+  let { title, num_questions, language = 'tr', answer_length = 'short', force = false } = req.body;
 
   if (user.plan === 'free') {
     num_questions = 5;
@@ -316,7 +316,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   // Önbellek kontrolü
   const cacheKey = { title, language, num_questions, answer_length };
   const cachedFaq = await FaqCache.findOne(cacheKey);
-  if (cachedFaq) {
+  if (cachedFaq && !force) {
     return res.json({ faqs: cachedFaq.faqs, cached: true });
   }
 
@@ -385,16 +385,15 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
     // Kredi hesabı: 5 soru-cevap = 1 kredi
     const required_credits = Math.ceil(num_questions / 5);
     
-    // Sadece cache yokken kredi düşür
+    // Kredi düşür (force olsa bile)
     user.credits -= required_credits;
     await user.save();
 
-    // Önbelleğe kaydet
-    const faqCache = new FaqCache({
+    // Önbelleğe kaydet veya güncelle
+    await FaqCache.findOneAndUpdate(cacheKey, {
       ...cacheKey,
       faqs: faqs
-    });
-    await faqCache.save();
+    }, { upsert: true, new: true });
 
     res.json({ faqs });
   } catch (err) {
