@@ -279,7 +279,7 @@ app.get('/user-info', authenticate, async (req, res) => {
   });
 });
 
-// FAQ Üret Endpoint (TAMAMEN YENİLENDİ)
+// FAQ Üret Endpoint (DEĞİŞİKLİK: Tamamen senkron hale getirildi, arka plan kaldırıldı)
 app.post('/api/generate-faq', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -337,7 +337,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
     });
   }
 
-  // 8. Arka planda üretim fonksiyonu
+  // 8. Arka planda üretim fonksiyonu (DEĞİŞİKLİK: Artık senkron, doğrudan await ile çağrılıyor)
   const generateFAQs = async () => {
     let recentNews = '';
     let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news';
@@ -406,43 +406,57 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
     }
   };
 
-  // 9. Önbellek yoksa arka planda üret ve kaydet
+  // DEĞİŞİKLİK: Önbellek yoksa üret ve bekle (arka plan kaldırıldı)
   if (!exactCache) {
     // Kredi düşür
     user.credits -= required_credits;
     await user.save();
 
-    // Arka planda üretim başlat
-    setTimeout(async () => {
-      try {
-        const faqs = await generateFAQs();
+    try {
+      const faqs = await generateFAQs();
+      
+      if (faqs.length > 0) {
+        // Önbelleğe kaydet
+        await FaqCache.findOneAndUpdate(cacheKey, {
+          ...cacheKey,
+          faqs: faqs
+        }, { upsert: true, new: true });
         
-        // Başarılı üretimde önbelleğe kaydet
-        if (faqs.length > 0) {
-          await FaqCache.findOneAndUpdate(cacheKey, {
-            ...cacheKey,
-            faqs: faqs
-          }, { upsert: true, new: true });
-        } else {
-          // Üretim başarısız olursa krediyi iade et
-          user.credits += required_credits;
-          await user.save();
-        }
-      } catch (bgError) {
-        console.error('Background generation error:', bgError);
+        res.json({ 
+          faqs: faqs,
+          message: "Yeni üretildi ve önbelleğe alındı"
+        });
+      } else {
+        // Üretim başarısız, krediyi iade et
+        user.credits += required_credits;
+        await user.save();
+        res.status(500).json({ 
+          error: 'generation_failed',
+          cached_faqs: nearestCache?.faqs || []
+        });
       }
-    }, 100); // 100ms sonra başlat
+    } catch (error) {
+      console.error('Generation error:', error);
+      // Hata durumunda krediyi iade et
+      user.credits += required_credits;
+      await user.save();
+      res.status(500).json({ 
+        error: 'server_error',
+        details: error.message,
+        cached_faqs: nearestCache?.faqs || []
+      });
+    }
+  } else {
+    // Önbellek varsa dön
+    res.json({ 
+      faqs: exactCache?.faqs || nearestCache?.faqs || [],
+      message: exactCache ? 
+        "Önbellekten yüklendi" : 
+        nearestCache ? 
+          "Benzer içerik yüklendi" : 
+          "Üretim tamamlandı"
+    });
   }
-
-  // 10. Yanıtı döndür
-  res.json({ 
-    faqs: exactCache?.faqs || nearestCache?.faqs || [],
-    message: exactCache ? 
-      "Önbellekten yüklendi" : 
-      nearestCache ? 
-        "Benzer içerik yükleniyor, güncel FAQ'lar arka planda üretiliyor..." : 
-        "İlk kez üretiliyor, lütfen bekleyin..."
-  });
 });
 
 // Admin Users Endpoint
@@ -912,36 +926,36 @@ app.get('/admin', adminAuth, (req, res) => {
             const stats = await response.json();
             
             const statsGrid = document.getElementById('statsGrid');
-            statsGrid.innerHTML = \`
+            statsGrid.innerHTML = `
               <div class="stat-card">
-                <div class="stat-number">\${stats.total_users}</div>
+                <div class="stat-number">${stats.total_users}</div>
                 <div class="stat-label">Toplam Kullanıcı</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.free_users}</div>
+                <div class="stat-number">${stats.free_users}</div>
                 <div class="stat-label">Free Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.pro_users}</div>
+                <div class="stat-number">${stats.pro_users}</div>
                 <div class="stat-label">Pro Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.agency_users}</div>
+                <div class="stat-number">${stats.agency_users}</div>
                 <div class="stat-label">Agency Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.active_users}</div>
+                <div class="stat-number">${stats.active_users}</div>
                 <div class="stat-label">Aktif Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">v\${stats.plugin_version}</div>
+                <div class="stat-number">v${stats.plugin_version}</div>
                 <div class="stat-label">Mevcut Plugin Versiyonu</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">\${stats.last_updated}</div>
+                <div class="stat-number">${stats.last_updated}</div>
                 <div class="stat-label">Son Güncelleme</div>
               </div>
-            \`;
+            `;
           } catch (error) {
             console.error('Stats yükleme hatası:', error);
           }
@@ -969,25 +983,25 @@ app.get('/admin', adminAuth, (req, res) => {
             const resultDiv = document.getElementById('pluginUpdateResult');
             
             if (response.ok) {
-              resultDiv.innerHTML = \`
+              resultDiv.innerHTML = `
                 <div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v\${result.updated_version.version}
+                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v${result.updated_version.version}
                 </div>
-              \`;
+              `;
               document.getElementById('pluginVersionForm').reset();
             } else {
-              resultDiv.innerHTML = \`
+              resultDiv.innerHTML = `
                 <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Hata:</strong> \${result.error}
+                  <strong>Hata:</strong> ${result.error}
                 </div>
-              \`;
+              `;
             }
           } catch (error) {
-            document.getElementById('pluginUpdateResult').innerHTML = \`
+            document.getElementById('pluginUpdateResult').innerHTML = `
               <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                <strong>Hata:</strong> \${error.message}
+                <strong>Hata:</strong> ${error.message}
               </div>
-            \`;
+            `;
           }
         });
 
@@ -1016,7 +1030,7 @@ app.get('/admin', adminAuth, (req, res) => {
                 '<td>' + createdAt + '</td>' +
                 '<td>' + deletedAt + '</td>' +
                 '<td>' +
-                  '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
+                  '<button onclick="openModal(\'' + user._id + '\', \'' + user.plan + '\', ' + user.credits + ', \'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\')">Düzenle</button>' +
                 '</td>';
               tbody.appendChild(tr);
             });
