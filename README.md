@@ -16,7 +16,7 @@ It uses **AI** + **real-time news** to generate **SEO-optimized**, **WPML/Polyla
 | Feature | Description |
 |---------|-------------|
 | 🤖 **AI Powered** | Generates page-specific questions & answers based on titles & current news. |
-| 🌍 **Multi-language** | Native support for WPML & Polylang; separate FAQs per language. |
+| 🌍 **Multi-language** | Native support with AI for separate FAQs per language. |
 | 🔍 **Rich Snippets** | Full [Schema.org](https://schema.org) markup → Google “People Also Ask” visibility. |
 | 📰 **Live News Feed** | API pulls the latest headlines for ultra-relevant Q&A. |
 | ⚡ **Bulk Processing** | Select any number of posts/pages and generate FAQs in one click. |
