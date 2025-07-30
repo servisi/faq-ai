@@ -1,7 +1,6 @@
 # AI-Powered FAQ Generator for WordPress  
 > Modern, AI-driven FAQ plugin that auto-creates, localizes and injects **Schema.org-ready** FAQs into every post & page.
 
-![hero](https://same-il63nk72hp2-latest.netlify.app/hero.png)
 
 ---
 
@@ -31,7 +30,6 @@ It uses **AI** + **real-time news** to generate **SEO-optimized**, **WPML/Polyla
 2. **Select** posts/pages or entire categories.  
 3. **Generate**—AI writes & injects fresh FAQs instantly.  
 
-![workflow](https://same-il63nk72hp2-latest.netlify.app/how-it-works.png)
 
 ---
 
