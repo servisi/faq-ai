@@ -320,7 +320,7 @@ app.get('/admin/users', adminAuth, async (req, res) => {
   let query = {};
   if (plan && plan !== 'all') query.plan = plan;
   if (search) query.email = { $regex: search, $options: 'i' };
-  const users = await User.find(query, 'email plan credits expirationDate lastReset registrationDate active');
+  const users = await User.find(query, 'email phone site plan credits expirationDate registrationDate active');
   res.json(users);
 });
 
@@ -410,7 +410,7 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   }
 });
 
-// Admin Panel HTML Page
+// Admin Panel HTML Page (TAM DÜZELTMELİ)
 app.get('/admin', adminAuth, (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -433,6 +433,7 @@ app.get('/admin', adminAuth, (req, res) => {
           text-align: center;
         }
         
+        /* Tab System */
         .tab-container {
           margin-bottom: 30px;
         }
@@ -466,6 +467,7 @@ app.get('/admin', adminAuth, (req, res) => {
           display: block;
         }
 
+        /* Plugin Stats Card */
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -566,6 +568,7 @@ app.get('/admin', adminAuth, (req, res) => {
           background-color: #218838;
         }
         
+        /* Plugin Management Form */
         .plugin-form {
           background: white;
           padding: 20px;
@@ -593,6 +596,7 @@ app.get('/admin', adminAuth, (req, res) => {
           resize: vertical;
         }
 
+        /* Modal Stilleri */
         .modal {
           display: none;
           position: fixed;
@@ -642,6 +646,7 @@ app.get('/admin', adminAuth, (req, res) => {
           background-color: #218838;
         }
         
+        /* Responsive tasarım */
         @media (max-width: 768px) {
           #controls {
             flex-direction: column;
@@ -658,6 +663,7 @@ app.get('/admin', adminAuth, (req, res) => {
     <body>
       <h1>AI FAQ Admin Panel</h1>
       
+      <!-- Tab Navigation -->
       <div class="tab-container">
         <div class="tabs">
           <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
@@ -666,6 +672,7 @@ app.get('/admin', adminAuth, (req, res) => {
         </div>
       </div>
 
+      <!-- Users Tab -->
       <div id="users-tab" class="tab-content active">
         <h2>Kullanıcı Yönetimi</h2>
         <div id="controls">
@@ -686,6 +693,7 @@ app.get('/admin', adminAuth, (req, res) => {
               <th>Site</th>
               <th>Plan</th>
               <th>Credits</th>
+              <th>Son Geçerlilik</th>
               <th>Kayıt Tarihi</th>
               <th>Durum</th>
               <th>Actions</th>
@@ -695,6 +703,7 @@ app.get('/admin', adminAuth, (req, res) => {
         </table>
       </div>
 
+      <!-- Plugin Management Tab -->
       <div id="plugin-tab" class="tab-content">
         <h2>Plugin Sürüm Yönetimi</h2>
         <div class="plugin-form">
@@ -725,11 +734,15 @@ app.get('/admin', adminAuth, (req, res) => {
         <div id="pluginUpdateResult"></div>
       </div>
 
+      <!-- Stats Tab -->
       <div id="stats-tab" class="tab-content">
         <h2>Genel İstatistikler</h2>
-        <div class="stats-grid" id="statsGrid"></div>
+        <div class="stats-grid" id="statsGrid">
+          <!-- Stats will be loaded here -->
+        </div>
       </div>
 
+      <!-- Modal -->
       <div id="editModal" class="modal">
         <div class="modal-content">
           <h2>Kullanıcı Düzenle</h2>
@@ -751,17 +764,26 @@ app.get('/admin', adminAuth, (req, res) => {
 
       <script>
         let currentUserId = null;
+        const adminUser = "${ADMIN_USER}";
+        const adminPass = "${ADMIN_PASS}";
+        const basicAuth = btoa(adminUser + ':' + adminPass);
 
+        // Tab switching
         function showTab(tabName) {
+          // Hide all tab contents
           document.querySelectorAll('.tab-content').forEach(tab => {
             tab.classList.remove('active');
           });
+          // Remove active class from all tabs
           document.querySelectorAll('.tab').forEach(tab => {
             tab.classList.remove('active');
           });
+          // Show selected tab content
           document.getElementById(tabName + '-tab').classList.add('active');
+          // Add active class to clicked tab
           event.target.classList.add('active');
           
+          // Load data for specific tabs
           if (tabName === 'users') {
             loadUsers();
           } else if (tabName === 'stats') {
@@ -769,9 +791,12 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
+        // Load plugin statistics
         async function loadStats() {
           try {
-            const response = await fetch('/admin/plugin-stats');
+            const response = await fetch('/admin/plugin-stats', {
+              headers: { 'Authorization': 'Basic ' + basicAuth }
+            });
             if (!response.ok) throw new Error('Stats yükleme hatası');
             const stats = await response.json();
             
@@ -808,9 +833,11 @@ app.get('/admin', adminAuth, (req, res) => {
             \`;
           } catch (error) {
             console.error('Stats yükleme hatası:', error);
+            document.getElementById('statsGrid').innerHTML = '<p>İstatistikler yüklenirken hata oluştu</p>';
           }
         }
 
+        // Plugin version update
         document.getElementById('pluginVersionForm').addEventListener('submit', async function(e) {
           e.preventDefault();
           
@@ -825,7 +852,10 @@ app.get('/admin', adminAuth, (req, res) => {
           try {
             const response = await fetch('/admin/update-plugin-version', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Basic ' + basicAuth
+              },
               body: JSON.stringify(formData)
             });
             
@@ -842,7 +872,7 @@ app.get('/admin', adminAuth, (req, res) => {
             } else {
               resultDiv.innerHTML = \`
                 <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Hata:</strong> \${result.error}
+                  <strong>Hata:</strong> \${result.error || 'Bilinmeyen hata'}
                 </div>
               \`;
             }
@@ -855,17 +885,23 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         });
 
+        // Kullanıcıları yükleme fonksiyonu
         async function loadUsers() {
           try {
             const search = document.getElementById('searchInput').value;
             const plan = document.getElementById('planFilter').value;
             const url = '/admin/users?search=' + encodeURIComponent(search) + '&plan=' + plan;
-            const response = await fetch(url);
+            
+            const response = await fetch(url, {
+              headers: { 'Authorization': 'Basic ' + basicAuth }
+            });
+            
             if (!response.ok) throw new Error('Yükleme hatası');
             const users = await response.json();
             
             const tbody = document.querySelector('#usersTable tbody');
             tbody.innerHTML = '';
+            
             users.forEach(user => {
               const tr = document.createElement('tr');
               tr.innerHTML = 
@@ -874,6 +910,7 @@ app.get('/admin', adminAuth, (req, res) => {
                 '<td>' + (user.site || 'N/A') + '</td>' +
                 '<td>' + user.plan + '</td>' +
                 '<td>' + user.credits + '</td>' +
+                '<td>' + (user.expirationDate ? new Date(user.expirationDate).toLocaleDateString('tr-TR') : 'N/A') + '</td>' +
                 '<td>' + new Date(user.registrationDate).toLocaleDateString('tr-TR') + '</td>' +
                 '<td>' + (user.active ? 'Aktif' : 'Pasif') + '</td>' +
                 '<td>' +
@@ -882,6 +919,7 @@ app.get('/admin', adminAuth, (req, res) => {
               tbody.appendChild(tr);
             });
             
+            // İstatistikleri güncelle
             updateStats();
           } catch (error) {
             console.error('Hata:', error);
@@ -889,20 +927,27 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
+        // İstatistikleri güncelleme fonksiyonu
         async function updateStats() {
           try {
-            const response = await fetch('/admin/users');
+            const response = await fetch('/admin/users', {
+              headers: { 'Authorization': 'Basic ' + basicAuth }
+            });
             if (!response.ok) throw new Error('İstatistik hatası');
             const allUsers = await response.json();
             const freeCount = allUsers.filter(u => u.plan === 'free').length;
             const proCount = allUsers.filter(u => u.plan === 'pro').length;
             const inactiveCount = allUsers.filter(u => !u.active).length;
-            document.getElementById('stats').innerHTML = '<p><strong>Toplam Free: ' + freeCount + '</strong> | <strong>Toplam Pro: ' + proCount + '</strong> | <strong>Pasif Kullanıcılar: ' + inactiveCount + '</strong></p>';
+            
+            document.getElementById('stats').innerHTML = '<p><strong>Free: ' + freeCount + 
+              '</strong> | <strong>Pro: ' + proCount + 
+              '</strong> | <strong>Pasif: ' + inactiveCount + '</strong></p>';
           } catch (error) {
             console.error('Hata:', error);
           }
         }
 
+        // Modal açma
         function openModal(userId, plan, credits, expiration) {
           currentUserId = userId;
           document.getElementById('editPlan').value = plan;
@@ -911,22 +956,33 @@ app.get('/admin', adminAuth, (req, res) => {
           document.getElementById('editModal').style.display = 'flex';
         }
 
+        // Modal kapama
         function closeModal() {
           document.getElementById('editModal').style.display = 'none';
         }
 
+        // Düzenleme gönderme
         async function submitEdit() {
           const plan = document.getElementById('editPlan').value;
           const credits = parseInt(document.getElementById('editCredits').value);
           const expiration = document.getElementById('editExpiration').value;
           
-          if (plan && !isNaN(credits) {
+          if (plan && !isNaN(credits)) {
             try {
               const response = await fetch('/admin/update-user', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: currentUserId, plan, credits, expirationDate: expiration })
+                headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Basic ' + basicAuth
+                },
+                body: JSON.stringify({ 
+                  userId: currentUserId, 
+                  plan, 
+                  credits, 
+                  expirationDate: expiration 
+                })
               });
+              
               if (response.ok) {
                 alert('Güncellendi!');
                 closeModal();
@@ -939,12 +995,15 @@ app.get('/admin', adminAuth, (req, res) => {
               alert('Güncelleme sırasında bir hata oluştu!');
             }
           } else {
-            alert('Tüm alanları doldurun.');
+            alert('Zorunlu alanları doldurun.');
           }
         }
 
+        // İlk yükleme
         loadUsers();
+        loadStats();
 
+        // Modal dışına tıklayınca kapatma
         window.onclick = function(event) {
           const modal = document.getElementById('editModal');
           if (event.target === modal) {
@@ -957,4 +1016,5 @@ app.get('/admin', adminAuth, (req, res) => {
   `);
 });
 
+// Vercel için export
 module.exports = app;
