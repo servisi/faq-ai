@@ -1,76 +1,84 @@
-# AI FAQ Generator
+# AI-Powered FAQ Generator for WordPress  
+> Modern, AI-driven FAQ plugin that auto-creates, localizes and injects **Schema.org-ready** FAQs into every post & page.
 
-### WordPress'in En Gelişmiş FAQ Eklentisi
+![hero](https://same-il63nk72hp2-latest.netlify.app/hero.png)
 
-# Yapay Zeka ile Otomatik SSS Üretimi
+---
 
-WordPress siteniz için güncel haberlerle desteklenmiş, SEO optimizasyonlu SSS bölümleri otomatik olarak oluşturun. Kredi tabanlı sistem ile tam kontrol sizde.
+## 🚀 What Is It?
 
-### Ücretsiz Plan
+**WP AI FAQ** is the most advanced WordPress FAQ plugin.  
+It uses **AI** + **real-time news** to generate **SEO-optimized**, **WPML/Polylang-ready** FAQs and injects them anywhere on your site via auto-insertion or the `[ai_faq]` short-code.
 
-- Otomatik Kurulum
-- Çok Dilli Destek
+---
 
-## Güçlü Özellikler
+## ✨ Key Features
 
-Modern web siteniz için ihtiyacınız olan tüm FAQ özellikleri tek eklentide
+| Feature | Description |
+|---------|-------------|
+| 🤖 **AI Powered** | Generates page-specific questions & answers based on titles & current news. |
+| 🌍 **Multi-language** | Native support for WPML & Polylang; separate FAQs per language. |
+| 🔍 **Rich Snippets** | Full [Schema.org](https://schema.org) markup → Google “People Also Ask” visibility. |
+| 📰 **Live News Feed** | API pulls the latest headlines for ultra-relevant Q&A. |
+| ⚡ **Bulk Processing** | Select any number of posts/pages and generate FAQs in one click. |
+| 🧩 **Flexible Placement** | Auto-inject or drop `[ai_faq]` exactly where you want. |
 
-### AI Destekli Üretim
+---
 
-OpenAI GPT-4 ile sayfa başlığınıza uygun, güncel haberlerle desteklenmiş SSS'ler otomatik üretir.
+## 🛠️ How It Works
 
-### Çok Dilli Destek
+1. **Install** the plugin from WP admin → activate in 30 s.  
+2. **Select** posts/pages or entire categories.  
+3. **Generate**—AI writes & injects fresh FAQs instantly.  
 
-WPML ve Polylang eklentileri ile uyumlu. Her dil için ayrı SSS'ler otomatik oluşturur.
+![workflow](https://same-il63nk72hp2-latest.netlify.app/how-it-works.png)
 
-### SEO Optimizasyonu
+---
 
-Schema.org yapısal verileri ile Google'da öne çıkan SSS görünümleri elde edin.
+## 📦 Pricing & Credits
 
-### Güncel Haber Entegrasyonu
+| Plan | Price | Credits / Mo | Best For |
+|------|-------|--------------|----------|
+| **Free** | ₺0 | 10 | Trying it out |
+| **Pro** | $19 | 200 | Professional sites |
+| **Agency** | $80 | 1000 | Large projects |
 
-Serper API ile güncel haberler çekilerek SSS'ler daha güncel ve relevantlı üretilir.
+> 1 credit = 5 question-answer pairs. Credits reset monthly.
 
-### Toplu İşlem
+---
 
-Tüm sayfa ve yazılarınıza aynı anda SSS ekleyin. Seçtiğiniz içerikleri toplu işleyin.
+## 🏁 Quick Start
 
-### Kolay Entegrasyon
+```bash
+# Clone repo
+git clone https://github.com/your-org/wp-ai-faq.git
 
-Otomatik enjeksiyon veya `[ai_faq]` kısa kodu ile istediğiniz yere SSS ekleyin.
+# Composer install (if using PHP dependencies)
+composer install
 
-## Nasıl Çalışır?
+# Build JS/CSS assets
+npm install && npm run build
+```
 
-3 basit adımda sitenize AI destekli SSS'ler ekleyin
+Upload the `wp-ai-faq` folder to `/wp-content/plugins/` and activate via WordPress Admin.
 
-1. ### Eklentiyi Kurun
-   WordPress eklenti dizininizden indirin ve aktif edin. Hesap oluşturmak 30 saniye sürüyor.
+---
 
-2. ### İçerikleri Seçin
-   SSS eklemek istediğiniz sayfa ve yazıları seçin. Toplu işlem ile hepsini aynı anda işleyin.
+## 🧪 Tech Stack
 
-3. ### Otomatik SSS
-   AI sayfa başlığınıza göre güncel SSS'ler üretir ve otomatik olarak içeriğinize ekler.
+* PHP 7.4+  
+* WordPress REST API  
+* OpenAI GPT-4  
+* Serper.dev News API  
+* TailwindCSS + React (admin UI)
 
-## Planlar ve Fiyatlar
+---
 
-İhtiyacınıza uygun kredi paketini seçin
+## 📄 License & Contributing
 
-| Plan       | Açıklama                     | Fiyat   | Kredi/ay | Site Sayısı | Soru-Cevap Aralığı | Destek Tipi        | Özellikler                  |
-|------------|------------------------------|---------|----------|-------------|---------------------|--------------------|-----------------------------|
-| Ücretsiz   | Başlamak için ideal          | ₺0      | 20       | 1           | 5                   | Temel destek       | Kısa cevaplar               |
-| Popüler    | Profesyonel siteler için     | $19     | 120      | 1           | 5-15                | Öncelikli destek   | Kısa ve uzun cevaplar, Gelişmiş özellikler |
-| Agency     | Büyük projeler için          | $80     | 1000     | 5           | 5-15                | Öncelikli destek   | Tüm gelişmiş özellikler     |
+MIT © 2025 WP AI FAQ Team  
+Issues & PRs welcome—see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-💡 **Kredi Sistemi:** Her 5 soru-cevap = 1 kredi kullanır
+---
 
-## İstatistikler
-
-- 10,000+ Aktif Kullanıcı
-- 500K+ Üretilen SSS
-- 25+ Desteklenen Dil
-- 4.9/5 Kullanıcı Puanı
-
-## Sitenizi Bugün Daha İyi Hale Getirin
-
-AI destekli SSS'lerle kullanıcı deneyimini artırın ve SEO performansınızı güçlendirin
+> **Make your site smarter today**—install **WP AI FAQ** and watch your SEO & UX sky-rocket!
