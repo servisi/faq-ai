@@ -99,12 +99,12 @@ async function resetCreditsIfNeeded(user) {
 // Plugin Version Schema
 const PluginVersionSchema = new mongoose.Schema({
   plugin_name: { type: String, default: 'sss-ai' },
-  version: { type: String, default: '3.0' },
+  version: { type: String, default: '3.1' },
   tested: { type: String, default: '6.8' },
   last_updated: { type: Date, default: Date.now },
-  download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip' },
+  download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip' },
   description: { type: String, default: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.' },
-  changelog: { type: String, default: '<h4>Versiyon 3.0</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>' }
+  changelog: { type: String, default: '<h4>Versiyon 3.1</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>' }
 });
 const PluginVersion = mongoose.model('PluginVersion', PluginVersionSchema);
 
@@ -116,7 +116,7 @@ async function getPluginVersion() {
         plugin_name: 'sss-ai',
         version: '3.0',
         tested: '6.8',
-        download_url: 'https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip',
+        download_url: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip',
         description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem.',
         changelog: `
           <h4>Versiyon 3.0</h4>
@@ -134,7 +134,7 @@ async function getPluginVersion() {
       version: '3.0',
       tested: '6.8',
       last_updated: new Date().toISOString().split('T')[0],
-      download_url: 'https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip',
+      download_url: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip',
       description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.',
       changelog: '<h4>Versiyon 3.0</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>'
     };
@@ -163,8 +163,8 @@ app.get('/wp-update-check', async (req, res) => {
 });
 
 // Plugin dosyası indirme endpoint'i
-app.get('/download/sss-ai-v3.0.zip', (req, res) => {
-  res.redirect('https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip');
+app.get('/download/sss-ai-v3.1.zip', (req, res) => {
+  res.redirect('https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip');
 });
 
 // Plugin changelog endpoint'i
@@ -268,9 +268,9 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   let prompt;
   if (language === 'tr') {
-    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
+    prompt = `Başlık: ${title}. Son güncel bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
   } else {
-    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide short, informative answers for each. Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
+    prompt = `Title: ${title}. Recent information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide short, informative answers for each. Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
   }
 
   try {
