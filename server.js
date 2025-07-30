@@ -1,4 +1,4 @@
-// server.js
+// server.js  (ÜCRETSİZ – sadece free plan)
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
@@ -14,26 +14,30 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: '*', methods: ['GET', 'POST'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 
-// Rate limiting
-const limiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'Too many requests.' });
+// Rate-limit: 1 dk içinde max 10 istek
+const limiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: 'Too many requests' });
 app.use('/api/generate-faq', limiter);
 
 mongoose.connect(process.env.MONGO_URI);
 
-// Kullanıcı şeması (pro/agency kaldırıldı)
+// Kullanıcı şeması – yalnızca free
 const UserSchema = new mongoose.Schema({
   email: String,
+  phone: String,
+  site: String,
   credits: { type: Number, default: 20 },
   lastReset: { type: Date, default: Date.now },
+  plan: { type: String, default: 'free' },
   createdAt: { type: Date, default: Date.now },
-  deletedAt: { type: Date, default: null }
+  deletedAt: Date
 });
 const User = mongoose.model('User', UserSchema);
 
-// Önbellek şeması
+// Önbellek şeması (7 gün)
 const FaqCacheSchema = new mongoose.Schema({
   title: String,
   language: String,
+  num_questions: Number,
   faqs: Array,
   createdAt: { type: Date, default: Date.now, expires: '7d' }
 });
@@ -45,7 +49,6 @@ const SERPER_API_KEY = process.env.SERPER_API_KEY;
 const ADMIN_USER = process.env.ADMIN_USER;
 const ADMIN_PASS = process.env.ADMIN_PASS;
 
-// Basic Auth Middleware
 function adminAuth(req, res, next) {
   const user = basicAuth(req);
   if (!user || user.name !== ADMIN_USER || user.pass !== ADMIN_PASS) {
@@ -55,20 +58,18 @@ function adminAuth(req, res, next) {
   next();
 }
 
-// Token Doğrula
 function authenticate(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.userId;
+    req.userId = jwt.verify(token, JWT_SECRET).userId;
     next();
-  } catch (err) {
+  } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
 }
 
-// Aylık Reset Kontrolü (sabit 20 kredi)
+// Aylık kredi reset – yalnızca free (20 kredi)
 async function resetCreditsIfNeeded(user) {
   const now = new Date();
   if (now.getMonth() !== user.lastReset.getMonth() || now.getFullYear() !== user.lastReset.getFullYear()) {
@@ -78,164 +79,143 @@ async function resetCreditsIfNeeded(user) {
   }
 }
 
-// Plugin Version Schema (korundu)
+// Plugin versiyon (ücretsiz)
 const PluginVersionSchema = new mongoose.Schema({
   plugin_name: { type: String, default: 'sss-ai' },
-  version: { type: String, default: '3.0' },
+  version: { type: String, default: '3.1' },
   tested: { type: String, default: '6.8' },
   last_updated: { type: Date, default: Date.now },
   download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/download/sss-ai.zip' },
-  description: { type: String, default: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.' }
+  description: { type: String, default: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.' },
+  changelog: { type: String, default: '<h4>Versiyon 3.1</h4><ul><li>Performans iyileştirmeleri</li></ul>' }
 });
 const PluginVersion = mongoose.model('PluginVersion', PluginVersionSchema);
 
 async function getPluginVersion() {
-  let version = await PluginVersion.findOne({ plugin_name: 'sss-ai' });
-  if (!version) {
-    version = new PluginVersion();
-    await version.save();
+  let v = await PluginVersion.findOne({ plugin_name: 'sss-ai' });
+  if (!v) {
+    v = new PluginVersion({});
+    await v.save();
   }
-  return version;
+  return v;
 }
 
-// WordPress güncelleme endpoint'leri (sade)
 app.get('/wp-update-check', async (req, res) => {
-  const { action, plugin } = req.query;
-  if (action === 'get_version' && plugin === 'sss-ai') {
-    const pluginVersion = await getPluginVersion();
+  if (req.query.action === 'get_version' && req.query.plugin === 'sss-ai') {
+    const p = await getPluginVersion();
     res.json({
-      version: pluginVersion.version,
-      tested: pluginVersion.tested,
-      last_updated: pluginVersion.last_updated.toISOString().split('T')[0],
-      download_url: pluginVersion.download_url,
-      description: pluginVersion.description
+      version: p.version,
+      tested: p.tested,
+      last_updated: p.last_updated.toISOString().split('T')[0],
+      download_url: p.download_url,
+      description: p.description,
+      changelog: p.changelog
     });
   } else {
     res.status(404).json({ error: 'Invalid request' });
   }
 });
 
-// Kayıt Endpoint
+app.get('/download/sss-ai.zip', (req, res) => res.redirect('https://github.com/servisi/faq-ai/releases/download/sss-ai.zip'));
+
+// Kullanıcı kaydı (ücretsiz)
 app.post('/register', async (req, res) => {
-  const { email } = req.body;
+  const { email, phone, site } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
+
   let user = await User.findOne({ email });
   if (user) {
+    if (phone) user.phone = phone;
+    if (site) user.site = site;
     if (user.deletedAt) user.deletedAt = null;
     await user.save();
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
     return res.json({ token });
   }
-  user = new User({ email });
+
+  user = new User({ email, phone, site });
   await user.save();
   const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token });
 });
 
-// User Info Endpoint (pro'suz)
+// Ücretsiz – Kullanıcı bilgisi
 app.get('/user-info', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
-  if (!user || user.deletedAt) return res.status(404).json({ error: 'User not found' });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.deletedAt) return res.status(401).json({ error: 'Account deleted' });
   await resetCreditsIfNeeded(user);
-  res.json({ credits: user.credits });
+  res.json({
+    plan: 'Ücretsiz',
+    credits: user.credits
+  });
 });
 
-// FAQ Üret Endpoint (sabit 5 soru, short)
+// FAQ üret – yalnızca 5 soru
 app.post('/api/generate-faq', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
-  if (!user || user.deletedAt) return res.status(404).json({ error: 'User not found' });
+  if (!user || user.deletedAt) return res.status(401).json({ error: 'User not found' });
+
   await resetCreditsIfNeeded(user);
-  const { title, language = 'tr' } = req.body;
+
+  let { title, language = 'tr', force = false } = req.body;
   const num_questions = 5;
-  const required_credits = 1; // Sabit 1 kredi
-  if (user.credits < required_credits) return res.status(400).json({ error: 'no_credits' });
 
-  const cacheKey = { title, language };
-  const cachedFaq = await FaqCache.findOne(cacheKey);
-  if (cachedFaq) return res.json({ faqs: cachedFaq.faqs, cached: true });
+  const cacheKey = { title, language, num_questions };
+  const cached = await FaqCache.findOne(cacheKey);
+  if (cached && !force) return res.json({ faqs: cached.faqs, cached: true });
 
+  const cost = 1; // 5 soru = 1 kredi
+  if (user.credits < cost) return res.status(400).json({ error: 'no_credits' });
+
+  // (Serper + OpenAI prompt kısaltıldı – ücretsizde gerekli minimum)
   let recentNews = '';
   try {
-    const searchResponse = await axios.post('https://google.serper.dev/search', {
-      q: `${title} ${language === 'tr' ? 'son haberler' : 'latest news'}`,
-      num: 5,
-      tbs: 'qdr:w',
-      hl: language,
-      gl: language === 'tr' ? 'tr' : 'us'
-    }, { headers: { 'X-API-KEY': SERPER_API_KEY, 'Content-Type': 'application/json' }, timeout: 15000 });
-    const results = searchResponse.data.organic || [];
-    recentNews = results.map(result => `${result.title}: ${result.snippet}`).join('\n');
-  } catch (err) {
+    const r = await axios.post('https://google.serper.dev/search', { q: `${title} son haberler`, num: 3, tbs: 'qdr:w', hl: 'tr', gl: 'tr' }, { headers: { 'X-API-KEY': SERPER_API_KEY }, timeout: 15000 });
+    recentNews = (r.data.organic || []).map(o => `${o.title}: ${o.snippet}`).join('\n');
+  } catch {
     recentNews = 'Güncel haberler tespit edilemedi.';
   }
 
-  const prompt = language === 'tr' ? 
-    `Başlık: ${title}. Güncel bilgiler: ${recentNews}. En çok aranan 5 FAQ sorusu üret ve her birine kısa cevap ver. JSON: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}` :
-    `Title: ${title}. Recent info: ${recentNews}. Generate top 5 FAQ questions with short answers. JSON: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
+  const prompt = `Başlık: ${title}. ${recentNews}. En çok aranan 5 FAQ sorusu ve kısa cevapları. JSON: {"faqs":[{"question":"...","answer":"..."}]}`;
 
   try {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
-      response_format: { type: "json_object" }
+      response_format: { type: 'json_object' }
     });
     const faqs = JSON.parse(completion.choices[0].message.content).faqs;
+    if (faqs.length !== 5) throw new Error('Count mismatch');
 
-    user.credits -= required_credits;
+    user.credits -= cost;
     await user.save();
-    await FaqCache.create({ ...cacheKey, faqs });
+    await FaqCache.findOneAndUpdate(cacheKey, { ...cacheKey, faqs }, { upsert: true, new: true });
 
     res.json({ faqs });
   } catch (err) {
-    res.status(500).json({ error: 'AI error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Admin Users Endpoint (sade)
+// Admin paneli (ücretsizde sadece kullanıcı listesi)
 app.get('/admin/users', adminAuth, async (req, res) => {
   const { search } = req.query;
-  let query = {};
-  if (search) query.email = { $regex: search, $options: 'i' };
-  const users = await User.find(query, 'email credits createdAt deletedAt');
+  const q = search ? { email: { $regex: search, $options: 'i' } } : {};
+  const users = await User.find(q, 'email phone site credits createdAt');
   res.json(users);
 });
 
-// Admin Stats Endpoint (sade)
-app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
-  const totalUsers = await User.countDocuments();
-  res.json({ total_users: totalUsers });
+// Admin panel HTML (ücretsiz)
+app.get('/admin', adminAuth, (req, res) => res.send(`
+<!doctype html><title>Admin – Ücretsiz</title>
+<h2>Ücretsiz Kullanıcılar</h2>
+<table border="1" cellpadding="6"><thead><tr><th>Email</th><th>Telefon</th><th>Site</th><th>Kredi</th><th>Oluşturulma</th></tr></thead><tbody id="tbody"></tbody></table>
+<script>
+fetch('/admin/users').then(r=>r.json()).then(u=>{
+ tbody.innerHTML=u.map(x=>"<tr><td>"+x.email+"</td><td>"+(x.phone||"")+"</td><td>"+(x.site||"")+"</td><td>"+x.credits+"</td><td>"+new Date(x.createdAt).toLocaleDateString()+"</td></tr>").join("");
 });
+</script>
+`));
 
-// Admin Panel HTML (sadeleştirilmiş)
-app.get('/admin', adminAuth, (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="tr">
-    <head><title>Admin Panel</title></head>
-    <body>
-      <h1>AI FAQ Admin</h1>
-      <input type="text" id="searchInput" placeholder="Email ara">
-      <button onclick="loadUsers()">Ara</button>
-      <table id="usersTable"><thead><tr><th>Email</th><th>Credits</th><th>Oluşturulma</th><th>Silinme</th></tr></thead><tbody></tbody></table>
-      <script>
-        async function loadUsers() {
-          const search = document.getElementById('searchInput').value;
-          const response = await fetch('/admin/users?search=' + search);
-          const users = await response.json();
-          const tbody = document.querySelector('#usersTable tbody');
-          tbody.innerHTML = '';
-          users.forEach(user => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = '<td>' + user.email + '</td><td>' + user.credits + '</td><td>' + new Date(user.createdAt).toLocaleDateString() + '</td><td>' + (user.deletedAt ? new Date(user.deletedAt).toLocaleDateString() : 'Aktif') + '</td>';
-            tbody.appendChild(tr);
-          });
-        }
-        loadUsers();
-      </script>
-    </body>
-    </html>
-  `);
-});
-
-// Vercel için export
 module.exports = app;
