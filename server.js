@@ -673,24 +673,22 @@ app.get('/admin', adminAuth, (req, res) => {
             const stats = await response.json();
             
             const statsGrid = document.getElementById('statsGrid');
-            statsGrid.innerHTML = `
-              <div class="stat-card">
-                <div class="stat-number">${stats.total_users}</div>
-                <div class="stat-label">Toplam Kullanıcı</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-number">${stats.active_users}</div>
-                <div class="stat-label">Aktif Kullanıcılar</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-number">v${stats.plugin_version}</div>
-                <div class="stat-label">Mevcut Plugin Versiyonu</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-number">${stats.last_updated}</div>
-                <div class="stat-label">Son Güncelleme</div>
-              </div>
-            `;
+            statsGrid.innerHTML = '<div class="stat-card">' +
+              '<div class="stat-number">' + stats.total_users + '</div>' +
+              '<div class="stat-label">Toplam Kullanıcı</div>' +
+            '</div>' +
+            '<div class="stat-card">' +
+              '<div class="stat-number">' + stats.active_users + '</div>' +
+              '<div class="stat-label">Aktif Kullanıcılar</div>' +
+            '</div>' +
+            '<div class="stat-card">' +
+              '<div class="stat-number">v' + stats.plugin_version + '</div>' +
+              '<div class="stat-label">Mevcut Plugin Versiyonu</div>' +
+            '</div>' +
+            '<div class="stat-card">' +
+              '<div class="stat-number">' + stats.last_updated + '</div>' +
+              '<div class="stat-label">Son Güncelleme</div>' +
+            '</div>';
           } catch (error) {
             console.error('Stats yükleme hatası:', error);
           }
@@ -719,26 +717,20 @@ app.get('/admin', adminAuth, (req, res) => {
             const resultDiv = document.getElementById('pluginUpdateResult');
             
             if (response.ok) {
-              resultDiv.innerHTML = `
-                <div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v${result.updated_version.version}
-                </div>
-              `;
+              resultDiv.innerHTML = '<div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">' +
+                '<strong>Başarılı!</strong> Plugin versiyonu güncellendi: v' + result.updated_version.version +
+              '</div>';
               // Form'u temizle
               document.getElementById('pluginVersionForm').reset();
             } else {
-              resultDiv.innerHTML = `
-                <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Hata:</strong> ${result.error}
-                </div>
-              `;
+              resultDiv.innerHTML = '<div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">' +
+                '<strong>Hata:</strong> ' + result.error +
+              '</div>';
             }
           } catch (error) {
-            document.getElementById('pluginUpdateResult').innerHTML = `
-              <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                <strong>Hata:</strong> ${error.message}
-              </div>
-            `;
+            document.getElementById('pluginUpdateResult').innerHTML = '<div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">' +
+              '<strong>Hata:</strong> ' + error.message +
+            '</div>';
           }
         });
 
