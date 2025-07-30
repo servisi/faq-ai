@@ -32,10 +32,14 @@ mongoose.connect(process.env.MONGO_URI);
 
 const UserSchema = new mongoose.Schema({
   email: String,
+  phone: String,
+  site: String,
   credits: { type: Number, default: 20 },
   lastReset: { type: Date, default: Date.now },
   plan: { type: String, default: 'free' },
-  expirationDate: { type: Date, default: null }
+  expirationDate: { type: Date, default: null },
+  registrationDate: { type: Date, default: Date.now },
+  active: { type: Boolean, default: true }
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -92,9 +96,7 @@ async function resetCreditsIfNeeded(user) {
   }
 }
 
-// === WORDPRESS GÜNCELLEME ENDPOİNTLERİ === //
-
-// Plugin Version Schema - MongoDB'de saklayacağız
+// Plugin Version Schema
 const PluginVersionSchema = new mongoose.Schema({
   plugin_name: { type: String, default: 'sss-ai' },
   version: { type: String, default: '3.0' },
@@ -106,12 +108,10 @@ const PluginVersionSchema = new mongoose.Schema({
 });
 const PluginVersion = mongoose.model('PluginVersion', PluginVersionSchema);
 
-// Plugin versiyon bilgisini database'den al
 async function getPluginVersion() {
   try {
     let version = await PluginVersion.findOne({ plugin_name: 'sss-ai' });
     if (!version) {
-      // İlk kez çalışıyorsa default değerleri kaydet
       version = new PluginVersion({
         plugin_name: 'sss-ai',
         version: '3.0',
@@ -130,14 +130,13 @@ async function getPluginVersion() {
     return version;
   } catch (error) {
     console.error('Plugin version fetch error:', error);
-    // Fallback değerler
     return {
       version: '3.0',
       tested: '6.8',
       last_updated: new Date().toISOString().split('T')[0],
       download_url: 'https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip',
       description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.',
-      changelog: '<h4>Versiyon 2.8</h4><ul><li>Otomatik güncelleme sistemi</li></ul>'
+      changelog: '<h4>Versiyon 3.0</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>'
     };
   }
 }
@@ -163,34 +162,9 @@ app.get('/wp-update-check', async (req, res) => {
   }
 });
 
-// Plugin dosyası indirme endpoint'i (PUBLIC - WordPress için)
-app.get('/download/sss-ai-v2.8.zip', (req, res) => {
-  // Bu endpoint'i gerçek plugin zip dosyasını serve etmek için kullanabilirsiniz
-  // Şimdilik placeholder response - gerçek zip dosyasını buraya koyun
-  
-  // Örnek: Gerçek dosya servisi
-  // const filePath = path.join(__dirname, 'files', 'sss-ai-v2.8.zip');
-  // if (fs.existsSync(filePath)) {
-  //   res.download(filePath, 'sss-ai-v2.8.zip');
-  // } else {
-  //   res.status(404).json({ error: 'File not found' });
-  // }
-  
-  // Geçici çözüm: Redirect to GitHub or your file server
+// Plugin dosyası indirme endpoint'i
+app.get('/download/sss-ai-v3.0.zip', (req, res) => {
   res.redirect('https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip');
-  
-  // Ya da doğrudan zip içeriği dönebilirsiniz (küçük dosyalar için)
-  // res.setHeader('Content-Type', 'application/zip');
-  // res.setHeader('Content-Disposition', 'attachment; filename="sss-ai-v3.0.zip"');
-  // res.send(zipBuffer); // Zip dosyasının buffer'ı
-});
-
-// Admin-only download endpoint (eski versiyon, sadmin için)
-app.get('/admin/download/sss-ai-v3.0.zip', adminAuth, (req, res) => {
-  res.json({
-    message: 'Admin plugin download would be served here',
-    note: 'Bu endpoint admin için özel indirme linki'
-  });
 });
 
 // Plugin changelog endpoint'i
@@ -200,23 +174,29 @@ app.get('/changelog/sss-ai', async (req, res) => {
     plugin: 'SSS Oluşturucu',
     current_version: pluginVersion.version,
     changelog: pluginVersion.changelog,
-    download_structure: 'sss-ai/sss-ai.php', // ZIP içi yapı bilgisi
-    important_note: 'ZIP dosyası içinde klasör adı "sss-ai" olmalı, başka bir ad OLMAMALI!'
+    download_structure: 'sss-ai/sss-ai.php',
+    important_note: 'ZIP dosyası içinde klasör adı "sss-ai" olmalıdır!'
   });
 });
 
-// === MEVCUT ENDPOİNTLER === //
-
 // Kayıt Endpoint
 app.post('/register', async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email required' });
+  const { email, phone, site } = req.body;
+  if (!email || !phone) return res.status(400).json({ error: 'Email ve telefon gereklidir' });
+  
   let user = await User.findOne({ email });
   if (user) {
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
     return res.json({ token });
   }
-  user = new User({ email });
+  
+  user = new User({ 
+    email, 
+    phone,
+    site,
+    registrationDate: new Date()
+  });
+  
   await user.save();
   const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token });
@@ -237,9 +217,13 @@ app.get('/user-info', authenticate, async (req, res) => {
   }
 
   res.json({
+    email: user.email,
+    phone: user.phone,
+    site: user.site,
     plan: user.plan === 'free' ? 'Ücretsiz Sürüm' : 'Pro Sürüm',
     credits: user.credits,
-    remainingDays: remainingDays
+    remainingDays: remainingDays,
+    createdAt: user.registrationDate
   });
 });
 
@@ -258,9 +242,9 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   const { title, num_questions, language = 'tr' } = req.body;
 
   let recentNews = '';
-  let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news'; // Dil bazında uyarla
-  let serperHl = language; // hl=tr, en, etc.
-  let serperGl = language === 'tr' ? 'tr' : 'us'; // Örnek, ülke bazında uyarla (daha fazla dil için genişlet)
+  let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news';
+  let serperHl = language;
+  let serperGl = language === 'tr' ? 'tr' : 'us';
 
   try {
     const searchResponse = await axios.post('https://google.serper.dev/search', {
@@ -282,7 +266,6 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
     recentNews = language === 'tr' ? 'Güncel haberler tespit edilemedi.' : 'Recent news could not be detected.';
   }
 
-  // Prompt'u dil bazında uyarla (daha fazla dil için switch ekle)
   let prompt;
   if (language === 'tr') {
     prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
@@ -315,13 +298,29 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   }
 });
 
-// Admin Users Endpoint (with search and plan filter)
+// Hesap Silme Endpoint
+app.post('/delete-account', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.active = false;
+    await user.save();
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Account deletion error:', error);
+    res.status(500).json({ error: 'Account deletion failed' });
+  }
+});
+
+// Admin Users Endpoint
 app.get('/admin/users', adminAuth, async (req, res) => {
   const { search, plan } = req.query;
   let query = {};
   if (plan && plan !== 'all') query.plan = plan;
-  if (search) query.email = { $regex: search, $options: 'i' }; // Email search, case-insensitive
-  const users = await User.find(query, 'email plan credits expirationDate lastReset');
+  if (search) query.email = { $regex: search, $options: 'i' };
+  const users = await User.find(query, 'email plan credits expirationDate lastReset registrationDate active');
   res.json(users);
 });
 
@@ -339,13 +338,14 @@ app.post('/admin/update-user', adminAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-// Plugin istatistikleri endpoint'i (admin)
+// Plugin istatistikleri endpoint'i
 app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
     const freeUsers = await User.countDocuments({ plan: 'free' });
     const proUsers = await User.countDocuments({ plan: 'pro' });
     const activeUsers = await User.countDocuments({ credits: { $gt: 0 } });
+    const inactiveUsers = await User.countDocuments({ active: false });
     const pluginVersion = await getPluginVersion();
 
     res.json({
@@ -353,6 +353,7 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
       free_users: freeUsers,
       pro_users: proUsers,
       active_users: activeUsers,
+      inactive_users: inactiveUsers,
       plugin_version: pluginVersion.version,
       last_updated: pluginVersion.last_updated instanceof Date ? 
         pluginVersion.last_updated.toISOString().split('T')[0] : 
@@ -363,7 +364,7 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
   }
 });
 
-// Plugin versiyonunu güncelleme endpoint'i (admin only) - DATABASE'e kaydeder
+// Plugin versiyonunu güncelleme endpoint'i
 app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   const { version, tested, description, changelog, download_url } = req.body;
   
@@ -372,7 +373,6 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   }
 
   try {
-    // Database'deki plugin versiyon bilgisini güncelle
     let pluginVersion = await PluginVersion.findOne({ plugin_name: 'sss-ai' });
     
     if (!pluginVersion) {
@@ -410,7 +410,7 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   }
 });
 
-// Admin Panel HTML Page (güncellenmiş versiyon)
+// Admin Panel HTML Page
 app.get('/admin', adminAuth, (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -433,7 +433,6 @@ app.get('/admin', adminAuth, (req, res) => {
           text-align: center;
         }
         
-        /* Tab System */
         .tab-container {
           margin-bottom: 30px;
         }
@@ -467,7 +466,6 @@ app.get('/admin', adminAuth, (req, res) => {
           display: block;
         }
 
-        /* Plugin Stats Card */
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -568,7 +566,6 @@ app.get('/admin', adminAuth, (req, res) => {
           background-color: #218838;
         }
         
-        /* Plugin Management Form */
         .plugin-form {
           background: white;
           padding: 20px;
@@ -596,7 +593,6 @@ app.get('/admin', adminAuth, (req, res) => {
           resize: vertical;
         }
 
-        /* Modal Stilleri */
         .modal {
           display: none;
           position: fixed;
@@ -646,7 +642,6 @@ app.get('/admin', adminAuth, (req, res) => {
           background-color: #218838;
         }
         
-        /* Responsive tasarım */
         @media (max-width: 768px) {
           #controls {
             flex-direction: column;
@@ -663,7 +658,6 @@ app.get('/admin', adminAuth, (req, res) => {
     <body>
       <h1>AI FAQ Admin Panel</h1>
       
-      <!-- Tab Navigation -->
       <div class="tab-container">
         <div class="tabs">
           <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
@@ -672,7 +666,6 @@ app.get('/admin', adminAuth, (req, res) => {
         </div>
       </div>
 
-      <!-- Users Tab -->
       <div id="users-tab" class="tab-content active">
         <h2>Kullanıcı Yönetimi</h2>
         <div id="controls">
@@ -689,9 +682,12 @@ app.get('/admin', adminAuth, (req, res) => {
           <thead>
             <tr>
               <th>Email</th>
+              <th>Telefon</th>
+              <th>Site</th>
               <th>Plan</th>
               <th>Credits</th>
-              <th>Expiration Date</th>
+              <th>Kayıt Tarihi</th>
+              <th>Durum</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -699,18 +695,17 @@ app.get('/admin', adminAuth, (req, res) => {
         </table>
       </div>
 
-      <!-- Plugin Management Tab -->
       <div id="plugin-tab" class="tab-content">
         <h2>Plugin Sürüm Yönetimi</h2>
         <div class="plugin-form">
           <form id="pluginVersionForm">
             <div class="form-group">
               <label for="pluginVersion">Plugin Versiyonu</label>
-              <input type="text" id="pluginVersion" placeholder="örn: 2.8" required>
+              <input type="text" id="pluginVersion" placeholder="örn: 3.0" required>
             </div>
             <div class="form-group">
               <label for="pluginTested">Test Edildiği WordPress Versiyonu</label>
-              <input type="text" id="pluginTested" placeholder="örn: 6.4" required>
+              <input type="text" id="pluginTested" placeholder="örn: 6.8" required>
             </div>
             <div class="form-group">
               <label for="pluginDescription">Açıklama</label>
@@ -730,15 +725,11 @@ app.get('/admin', adminAuth, (req, res) => {
         <div id="pluginUpdateResult"></div>
       </div>
 
-      <!-- Stats Tab -->
       <div id="stats-tab" class="tab-content">
         <h2>Genel İstatistikler</h2>
-        <div class="stats-grid" id="statsGrid">
-          <!-- Stats will be loaded here -->
-        </div>
+        <div class="stats-grid" id="statsGrid"></div>
       </div>
 
-      <!-- Modal -->
       <div id="editModal" class="modal">
         <div class="modal-content">
           <h2>Kullanıcı Düzenle</h2>
@@ -761,22 +752,16 @@ app.get('/admin', adminAuth, (req, res) => {
       <script>
         let currentUserId = null;
 
-        // Tab switching
         function showTab(tabName) {
-          // Hide all tab contents
           document.querySelectorAll('.tab-content').forEach(tab => {
             tab.classList.remove('active');
           });
-          // Remove active class from all tabs
           document.querySelectorAll('.tab').forEach(tab => {
             tab.classList.remove('active');
           });
-          // Show selected tab content
           document.getElementById(tabName + '-tab').classList.add('active');
-          // Add active class to clicked tab
           event.target.classList.add('active');
           
-          // Load data for specific tabs
           if (tabName === 'users') {
             loadUsers();
           } else if (tabName === 'stats') {
@@ -784,7 +769,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // Load plugin statistics
         async function loadStats() {
           try {
             const response = await fetch('/admin/plugin-stats');
@@ -810,6 +794,10 @@ app.get('/admin', adminAuth, (req, res) => {
                 <div class="stat-label">Aktif Kullanıcılar</div>
               </div>
               <div class="stat-card">
+                <div class="stat-number">\${stats.inactive_users}</div>
+                <div class="stat-label">Pasif Kullanıcılar</div>
+              </div>
+              <div class="stat-card">
                 <div class="stat-number">v\${stats.plugin_version}</div>
                 <div class="stat-label">Mevcut Plugin Versiyonu</div>
               </div>
@@ -823,7 +811,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // Plugin version update
         document.getElementById('pluginVersionForm').addEventListener('submit', async function(e) {
           e.preventDefault();
           
@@ -851,7 +838,6 @@ app.get('/admin', adminAuth, (req, res) => {
                   <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v\${result.updated_version.version}
                 </div>
               \`;
-              // Form'u temizle
               document.getElementById('pluginVersionForm').reset();
             } else {
               resultDiv.innerHTML = \`
@@ -869,7 +855,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         });
 
-        // Kullanıcıları yükleme fonksiyonu
         async function loadUsers() {
           try {
             const search = document.getElementById('searchInput').value;
@@ -885,16 +870,18 @@ app.get('/admin', adminAuth, (req, res) => {
               const tr = document.createElement('tr');
               tr.innerHTML = 
                 '<td>' + user.email + '</td>' +
+                '<td>' + (user.phone || 'N/A') + '</td>' +
+                '<td>' + (user.site || 'N/A') + '</td>' +
                 '<td>' + user.plan + '</td>' +
                 '<td>' + user.credits + '</td>' +
-                '<td>' + (user.expirationDate ? new Date(user.expirationDate).toLocaleDateString('tr-TR') : 'N/A') + '</td>' +
+                '<td>' + new Date(user.registrationDate).toLocaleDateString('tr-TR') + '</td>' +
+                '<td>' + (user.active ? 'Aktif' : 'Pasif') + '</td>' +
                 '<td>' +
                   '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
                 '</td>';
               tbody.appendChild(tr);
             });
             
-            // İstatistikleri güncelle
             updateStats();
           } catch (error) {
             console.error('Hata:', error);
@@ -902,7 +889,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // İstatistikleri güncelleme fonksiyonu
         async function updateStats() {
           try {
             const response = await fetch('/admin/users');
@@ -910,13 +896,13 @@ app.get('/admin', adminAuth, (req, res) => {
             const allUsers = await response.json();
             const freeCount = allUsers.filter(u => u.plan === 'free').length;
             const proCount = allUsers.filter(u => u.plan === 'pro').length;
-            document.getElementById('stats').innerHTML = '<p><strong>Toplam Free Kullanıcı: ' + freeCount + '</strong> | <strong>Toplam Pro Kullanıcı: ' + proCount + '</strong></p>';
+            const inactiveCount = allUsers.filter(u => !u.active).length;
+            document.getElementById('stats').innerHTML = '<p><strong>Toplam Free: ' + freeCount + '</strong> | <strong>Toplam Pro: ' + proCount + '</strong> | <strong>Pasif Kullanıcılar: ' + inactiveCount + '</strong></p>';
           } catch (error) {
             console.error('Hata:', error);
           }
         }
 
-        // Modal açma
         function openModal(userId, plan, credits, expiration) {
           currentUserId = userId;
           document.getElementById('editPlan').value = plan;
@@ -925,18 +911,16 @@ app.get('/admin', adminAuth, (req, res) => {
           document.getElementById('editModal').style.display = 'flex';
         }
 
-        // Modal kapama
         function closeModal() {
           document.getElementById('editModal').style.display = 'none';
         }
 
-        // Düzenleme gönderme
         async function submitEdit() {
           const plan = document.getElementById('editPlan').value;
           const credits = parseInt(document.getElementById('editCredits').value);
           const expiration = document.getElementById('editExpiration').value;
           
-          if (plan && !isNaN(credits) && expiration) {
+          if (plan && !isNaN(credits) {
             try {
               const response = await fetch('/admin/update-user', {
                 method: 'POST',
@@ -959,10 +943,8 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         }
 
-        // İlk yükleme
         loadUsers();
 
-        // Modal dışına tıklayınca kapatma
         window.onclick = function(event) {
           const modal = document.getElementById('editModal');
           if (event.target === modal) {
@@ -975,5 +957,4 @@ app.get('/admin', adminAuth, (req, res) => {
   `);
 });
 
-// Vercel için export
 module.exports = app;
