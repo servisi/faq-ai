@@ -105,7 +105,6 @@ async function resetCreditsIfNeeded(user) {
 
 // === WORDPRESS GÜNCELLEME ENDPOİNTLERİ === //
 
-// Plugin Version Schema
 const PluginVersionSchema = new mongoose.Schema({
   plugin_name: { type: String, default: 'sss-ai' },
   version: { type: String, default: '3.0' },
@@ -117,9 +116,8 @@ const PluginVersionSchema = new mongoose.Schema({
 });
 const PluginVersion = mongoose.model('PluginVersion', PluginVersionSchema);
 
-// Plugin versiyon bilgisini database'den al
 async function getPluginVersion() {
-  await dbConnect(); // <-- eklendi
+  await dbConnect();
   try {
     let version = await PluginVersion.findOne({ plugin_name: 'sss-ai' });
     if (!version) {
@@ -129,12 +127,7 @@ async function getPluginVersion() {
         tested: '6.8',
         download_url: 'https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip',
         description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem.',
-        changelog: `
-          <h4>Versiyon 3.0</h4>
-    <ul>
-      <li>Güncelleme sırasında oluşan hata çözüldü.</li>
-    </ul>
-        `
+        changelog: `<h4>Versiyon 3.0</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>`
       });
       await version.save();
     }
@@ -152,7 +145,6 @@ async function getPluginVersion() {
   }
 }
 
-// WordPress güncelleme kontrolü endpoint'i
 app.get('/wp-update-check', async (req, res) => {
   const { action, plugin } = req.query;
   if (action === 'get_version' && plugin === 'sss-ai') {
@@ -172,12 +164,10 @@ app.get('/wp-update-check', async (req, res) => {
   }
 });
 
-// Plugin dosyası indirme endpoint'i
 app.get('/download/sss-ai-v2.8.zip', (req, res) => {
   res.redirect('https://github.com/servisi/faq-ai/releases/download/v3.0/sss-ai.zip');
 });
 
-// Admin-only download endpoint
 app.get('/admin/download/sss-ai-v3.0.zip', adminAuth, (req, res) => {
   res.json({
     message: 'Admin plugin download would be served here',
@@ -185,7 +175,6 @@ app.get('/admin/download/sss-ai-v3.0.zip', adminAuth, (req, res) => {
   });
 });
 
-// Plugin changelog endpoint'i
 app.get('/changelog/sss-ai', async (req, res) => {
   const pluginVersion = await getPluginVersion();
   res.json({
@@ -199,9 +188,8 @@ app.get('/changelog/sss-ai', async (req, res) => {
 
 // === MEVCUT ENDPOİNTLER === //
 
-// Kayıt Endpoint
 app.post('/register', async (req, res) => {
-  await dbConnect(); // <-- eklendi
+  await dbConnect();
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
   let user = await User.findOne({ email });
@@ -215,9 +203,8 @@ app.post('/register', async (req, res) => {
   res.json({ token });
 });
 
-// User Info Endpoint
 app.get('/user-info', authenticate, async (req, res) => {
-  await dbConnect(); // <-- eklendi
+  await dbConnect();
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -237,9 +224,8 @@ app.get('/user-info', authenticate, async (req, res) => {
   });
 });
 
-// FAQ Üret Endpoint
 app.post('/api/generate-faq', authenticate, async (req, res) => {
-  await dbConnect(); // <-- eklendi
+  await dbConnect();
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -309,9 +295,8 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
   }
 });
 
-// Admin Users Endpoint
 app.get('/admin/users', adminAuth, async (req, res) => {
-  await dbConnect(); // <-- eklendi
+  await dbConnect();
   const { search, plan } = req.query;
   let query = {};
   if (plan && plan !== 'all') query.plan = plan;
@@ -320,9 +305,8 @@ app.get('/admin/users', adminAuth, async (req, res) => {
   res.json(users);
 });
 
-// Admin Update User Endpoint
 app.post('/admin/update-user', adminAuth, async (req, res) => {
-  await dbConnect(); // <-- eklendi
+  await dbConnect();
   const { userId, plan, credits, expirationDate } = req.body;
   const user = await User.findById(userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -335,9 +319,8 @@ app.post('/admin/update-user', adminAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-// Plugin istatistikleri endpoint'i (admin)
 app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
-  await dbConnect(); // <-- eklendi
+  await dbConnect();
   try {
     const totalUsers = await User.countDocuments();
     const freeUsers = await User.countDocuments({ plan: 'free' });
@@ -360,9 +343,8 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
   }
 });
 
-// Plugin versiyonunu güncelleme endpoint'i (admin only)
 app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
-  await dbConnect(); // <-- eklendi
+  await dbConnect();
   const { version, tested, description, changelog, download_url } = req.body;
   
   if (!version) {
@@ -405,10 +387,532 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   }
 });
 
-// Admin Panel HTML Page (değişmedi)
 app.get('/admin', adminAuth, (req, res) => {
-  res.send(`... (aynı HTML) ...`);
+  res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <title>Admin Panel - AI FAQ Users & Plugin Management</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 30px;
+      color: #333;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #007bff;
+      margin-bottom: 30px;
+      font-size: 2em;
+      text-align: center;
+    }
+    .tab-container {
+      margin-bottom: 30px;
+    }
+    .tabs {
+      display: flex;
+      background-color: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .tab {
+      flex: 1;
+      padding: 15px 20px;
+      background-color: #f8f9fa;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+    .tab:hover {
+      background-color: #e9ecef;
+    }
+    .tab.active {
+      background-color: #007bff;
+      color: white;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .stat-number {
+      font-size: 2em;
+      font-weight: bold;
+      color: #007bff;
+    }
+    .stat-label {
+      color: #666;
+      margin-top: 5px;
+    }
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 30px;
+      justify-content: center;
+    }
+    input, select {
+      padding: 12px;
+      border: 1px solid #ced4da;
+      border-radius: 6px;
+      flex: 1 1 200px;
+      font-size: 1em;
+      transition: border-color 0.3s;
+    }
+    input:focus, select:focus {
+      border-color: #007bff;
+      outline: none;
+    }
+    button {
+      padding: 12px 20px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1em;
+      transition: background-color 0.3s, transform 0.2s;
+    }
+    button:hover {
+      background-color: #0056b3;
+      transform: translateY(-2px);
+    }
+    #stats {
+      margin-bottom: 30px;
+      padding: 15px;
+      background-color: #e9ecef;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      background-color: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    th, td {
+      padding: 15px;
+      text-align: left;
+      border-bottom: 1px solid #dee2e6;
+    }
+    th {
+      background-color: #007bff;
+      color: white;
+      font-weight: bold;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    tr:hover {
+      background-color: #f1f3f5;
+    }
+    td button {
+      background-color: #28a745;
+      padding: 8px 12px;
+      font-size: 0.9em;
+      border-radius: 4px;
+    }
+    td button:hover {
+      background-color: #218838;
+    }
+    .plugin-form {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .form-group input, .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .form-group textarea {
+      height: 120px;
+      resize: vertical;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-content {
+      background-color: white;
+      padding: 30px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+    .modal-content h2 {
+      margin-top: 0;
+      color: #007bff;
+    }
+    .modal-content label {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    .modal-content input, .modal-content select {
+      width: 100%;
+      margin-bottom: 20px;
+    }
+    .modal-content button {
+      width: 48%;
+    }
+    .modal-content .close-btn {
+      background-color: #dc3545;
+    }
+    .modal-content .close-btn:hover {
+      background-color: #c82333;
+    }
+    .modal-content .submit-btn {
+      background-color: #28a745;
+    }
+    .modal-content .submit-btn:hover {
+      background-color: #218838;
+    }
+    @media (max-width: 768px) {
+      #controls {
+        flex-direction: column;
+      }
+      .modal-content {
+        width: 95%;
+      }
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>AI FAQ Admin Panel</h1>
+  
+  <div class="tab-container">
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
+      <button class="tab" onclick="showTab('plugin')">Plugin Yönetimi</button>
+      <button class="tab" onclick="showTab('stats')">İstatistikler</button>
+    </div>
+  </div>
+
+  <div id="users-tab" class="tab-content active">
+    <h2>Kullanıcı Yönetimi</h2>
+    <div id="controls">
+      <input type="text" id="searchInput" placeholder="Email ile ara">
+      <select id="planFilter">
+        <option value="all">Tümü</option>
+        <option value="free">Free</option>
+        <option value="pro">Pro (Aktif)</option>
+      </select>
+      <button onclick="loadUsers()">Ara/Filtrele</button>
+    </div>
+    <div id="stats"></div>
+    <table id="usersTable">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Plan</th>
+          <th>Credits</th>
+          <th>Expiration Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="plugin-tab" class="tab-content">
+    <h2>Plugin Sürüm Yönetimi</h2>
+    <div class="plugin-form">
+      <form id="pluginVersionForm">
+        <div class="form-group">
+          <label for="pluginVersion">Plugin Versiyonu</label>
+          <input type="text" id="pluginVersion" placeholder="örn: 2.8" required>
+        </div>
+        <div class="form-group">
+          <label for="pluginTested">Test Edildiği WordPress Versiyonu</label>
+          <input type="text" id="pluginTested" placeholder="örn: 6.4" required>
+        </div>
+        <div class="form-group">
+          <label for="pluginDescription">Açıklama</label>
+          <textarea id="pluginDescription" placeholder="Plugin açıklaması..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="pluginChangelog">Changelog (HTML formatında)</label>
+          <textarea id="pluginChangelog" placeholder="<h4>Versiyon X.X</h4><ul><li>Yeni özellik</li></ul>"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="pluginDownloadUrl">İndirme URL'si</label>
+          <input type="url" id="pluginDownloadUrl" placeholder="https://example.com/plugin.zip">
+        </div>
+        <button type="submit">Plugin Versiyonunu Güncelle</button>
+      </form>
+    </div>
+    <div id="pluginUpdateResult"></div>
+  </div>
+
+  <div id="stats-tab" class="tab-content">
+    <h2>Genel İstatistikler</h2>
+    <div class="stats-grid" id="statsGrid">
+    </div>
+  </div>
+
+  <div id="editModal" class="modal">
+    <div class="modal-content">
+      <h2>Kullanıcı Düzenle</h2>
+      <form id="editForm">
+        <label for="editPlan">Plan:</label>
+        <select id="editPlan">
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+        </select>
+        <label for="editCredits">Credits:</label>
+        <input type="number" id="editCredits" min="0">
+        <label for="editExpiration">Expiration Date (YYYY-MM-DD):</label>
+        <input type="date" id="editExpiration">
+        <button type="button" class="submit-btn" onclick="submitEdit()">Güncelle</button>
+        <button type="button" class="close-btn" onclick="closeModal()">İptal</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let currentUserId = null;
+
+    function showTab(tabName) {
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.getElementById(tabName + '-tab').classList.add('active');
+      event.target.classList.add('active');
+      
+      if (tabName === 'users') {
+        loadUsers();
+      } else if (tabName === 'stats') {
+        loadStats();
+      }
+    }
+
+    async function loadStats() {
+      try {
+        const response = await fetch('/admin/plugin-stats');
+        if (!response.ok) throw new Error('Stats yükleme hatası');
+        const stats = await response.json();
+        
+        const statsGrid = document.getElementById('statsGrid');
+        statsGrid.innerHTML = \`
+          <div class="stat-card">
+            <div class="stat-number">\${stats.total_users}</div>
+            <div class="stat-label">Toplam Kullanıcı</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">\${stats.free_users}</div>
+            <div class="stat-label">Free Kullanıcılar</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">\${stats.pro_users}</div>
+            <div class="stat-label">Pro Kullanıcılar</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">\${stats.active_users}</div>
+            <div class="stat-label">Aktif Kullanıcılar</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">v\${stats.plugin_version}</div>
+            <div class="stat-label">Mevcut Plugin Versiyonu</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">\${stats.last_updated}</div>
+            <div class="stat-label">Son Güncelleme</div>
+          </div>
+        \`;
+      } catch (error) {
+        console.error('Stats yükleme hatası:', error);
+      }
+    }
+
+    document.getElementById('pluginVersionForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const formData = {
+        version: document.getElementById('pluginVersion').value,
+        tested: document.getElementById('pluginTested').value,
+        description: document.getElementById('pluginDescription').value,
+        changelog: document.getElementById('pluginChangelog').value,
+        download_url: document.getElementById('pluginDownloadUrl').value
+      };
+
+      try {
+        const response = await fetch('/admin/update-plugin-version', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        
+        const result = await response.json();
+        const resultDiv = document.getElementById('pluginUpdateResult');
+        
+        if (response.ok) {
+          resultDiv.innerHTML = \`
+            <div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">
+              <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v\${result.updated_version.version}
+            </div>
+          \`;
+          document.getElementById('pluginVersionForm').reset();
+        } else {
+          resultDiv.innerHTML = \`
+            <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
+              <strong>Hata:</strong> \${result.error}
+            </div>
+          \`;
+        }
+      } catch (error) {
+        document.getElementById('pluginUpdateResult').innerHTML = \`
+          <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
+            <strong>Hata:</strong> \${error.message}
+          </div>
+        \`;
+      }
+    });
+
+    async function loadUsers() {
+      try {
+        const search = document.getElementById('searchInput').value;
+        const plan = document.getElementById('planFilter').value;
+        const url = '/admin/users?search=' + encodeURIComponent(search) + '&plan=' + plan;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Yükleme hatası');
+        const users = await response.json();
+        
+        const tbody = document.querySelector('#usersTable tbody');
+        tbody.innerHTML = '';
+        users.forEach(user => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = 
+            '<td>' + user.email + '</td>' +
+            '<td>' + user.plan + '</td>' +
+            '<td>' + user.credits + '</td>' +
+            '<td>' + (user.expirationDate ? new Date(user.expirationDate).toLocaleDateString('tr-TR') : 'N/A') + '</td>' +
+            '<td>' +
+              '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
+            '</td>';
+          tbody.appendChild(tr);
+        });
+        
+        updateStats();
+      } catch (error) {
+        console.error('Hata:', error);
+        alert('Kullanıcılar yüklenirken bir hata oluştu.');
+      }
+    }
+
+    async function updateStats() {
+      try {
+        const response = await fetch('/admin/users');
+        if (!response.ok) throw new Error('İstatistik hatası');
+        const allUsers = await response.json();
+        const freeCount = allUsers.filter(u => u.plan === 'free').length;
+        const proCount = allUsers.filter(u => u.plan === 'pro').length;
+        document.getElementById('stats').innerHTML = '<p><strong>Toplam Free Kullanıcı: ' + freeCount + '</strong> | <strong>Toplam Pro Kullanıcı: ' + proCount + '</strong></p>';
+      } catch (error) {
+        console.error('Hata:', error);
+      }
+    }
+
+    function openModal(userId, plan, credits, expiration) {
+      currentUserId = userId;
+      document.getElementById('editPlan').value = plan;
+      document.getElementById('editCredits').value = credits;
+      document.getElementById('editExpiration').value = expiration;
+      document.getElementById('editModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('editModal').style.display = 'none';
+    }
+
+    async function submitEdit() {
+      const plan = document.getElementById('editPlan').value;
+      const credits = parseInt(document.getElementById('editCredits').value);
+      const expiration = document.getElementById('editExpiration').value;
+      
+      if (plan && !isNaN(credits) && expiration) {
+        try {
+          const response = await fetch('/admin/update-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentUserId, plan, credits, expirationDate: expiration })
+          });
+          if (response.ok) {
+            alert('Güncellendi!');
+            closeModal();
+            loadUsers();
+          } else {
+            throw new Error('Güncelleme hatası');
+          }
+        } catch (error) {
+          console.error('Hata:', error);
+          alert('Güncelleme sırasında bir hata oluştu!');
+        }
+      } else {
+        alert('Tüm alanları doldurun.');
+      }
+    }
+
+    loadUsers();
+
+    window.onclick = function(event) {
+      const modal = document.getElementById('editModal');
+      if (event.target === modal) {
+        closeModal();
+      }
+    }
+  </script>
+</body>
+</html>`);
 });
 
-// Vercel için export
 module.exports = app;
