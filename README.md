@@ -75,7 +75,7 @@ Upload the `wp-ai-faq` folder to `/wp-content/plugins/` and activate via WordPre
 ## 📄 License & Contributing
 
 GPL-3.0 license © 2025 WP AI FAQ Team  
-Issues & PRs welcome—see [Licence.txt]([./CONTRIBUTING.md](https://www.gnu.org/licenses/gpl-3.0.html)).
+Issues & PRs welcome—see ([./Licence.txt](https://www.gnu.org/licenses/gpl-3.0.html)).
 
 ---
 
