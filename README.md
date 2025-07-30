@@ -37,8 +37,8 @@ It uses **AI** + **real-time news** to generate **SEO-optimized**, **WPML/Polyla
 
 | Plan | Price | Credits / Mo | Best For |
 |------|-------|--------------|----------|
-| **Free** | ₺0 | 10 | Trying it out |
-| **Pro** | $19 | 200 | Professional sites |
+| **Free** | ₺0 | 20 | Trying it out |
+| **Pro** | $19 | 180 | Professional sites |
 | **Agency** | $80 | 1000 | Large projects |
 
 > 1 credit = 5 question-answer pairs. Credits reset monthly.
