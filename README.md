@@ -66,9 +66,9 @@ Upload the `wp-ai-faq` folder to `/wp-content/plugins/` and activate via WordPre
 
 * PHP 7.4+  
 * WordPress REST API  
-* OpenAI GPT-4  
-* Serper.dev News API  
-* TailwindCSS + React (admin UI)
+* OpenAI 
+* Serp API  
+* TailwindCSS + React
 
 ---
 
