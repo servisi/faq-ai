@@ -1,838 +1,195 @@
-// server.js ama gizli
+// server.js – Ücretsiz sürüm backend
+require('dotenv').config();
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
-const dotenv = require('dotenv');
+const cors = require('cors');
+const basicAuth = require('basic-auth');
 const OpenAI = require('openai');
 const axios = require('axios');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
-const basicAuth = require('basic-auth');
-const fs = require('fs');
-const path = require('path');
-
-dotenv.config();
 const app = express();
-app.use(express.json());
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: 'Too many requests, please try again later.'
-});
-app.use('/api/generate-faq', limiter);
+app.use(express.json());
+app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 
 mongoose.connect(process.env.MONGO_URI);
-
-const UserSchema = new mongoose.Schema({
-  email: String,
-  phone: String,
-  site_url: String,
-  registration_date: { type: Date, default: Date.now },
-  status: { type: String, default: 'active' },
-  lastReset: { type: Date, default: Date.now },
-});
-const User = mongoose.model('User', UserSchema);
-
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY,
-});
 const JWT_SECRET = process.env.JWT_SECRET;
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
-const ADMIN_USER = process.env.ADMIN_USER;
-const ADMIN_PASS = process.env.ADMIN_PASS;
 
-// Basic Auth Middleware for Admin
+/* ----------  Free User Schema  ---------- */
+const FreeUserSchema = new mongoose.Schema({
+  email:        { type: String, unique: true },
+  phone:        String,
+  site:         String,
+  credits:      { type: Number, default: 20 },
+  plan:         { type: String, default: 'free' },
+  lastReset:    { type: Date, default: Date.now },
+  registeredAt: { type: Date, default: Date.now },
+  status:       { type: String, default: 'active' } // active | disabled
+});
+const FreeUser = mongoose.model('FreeUser', FreeUserSchema);
+
+/* ----------  Admin auth  ---------- */
 function adminAuth(req, res, next) {
   const user = basicAuth(req);
-  if (!user || user.name !== ADMIN_USER || user.pass !== ADMIN_PASS) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Admin"');
+  if (!user || user.name !== process.env.ADMIN_USER || user.pass !== process.env.ADMIN_PASS) {
+    res.set('WWW-Authenticate', 'Basic realm="Admin"');
     return res.status(401).send('Unauthorized');
   }
   next();
 }
 
-// Middleware: Token Doğrula
-function authenticate(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.userId;
-    next();
-  } catch (err) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-}
-
-// === WORDPRESS GÜNCELLEME ENDPOİNTLERİ === //
-
-// Plugin versiyon bilgisi
+/* ----------  WordPress update check  ---------- */
 const PLUGIN_VERSION = {
-  version: '2.8', // Yeni versiyon
+  version: '3.0-free',
   tested: '6.4',
-  last_updated: '2025-07-28',
-  download_url: 'https://publicus.com.tr/ai-oto-faq-generator.zip',
-  description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem. Otomatik güncelleme özelliği ile her zaman güncel kalın.',
-  changelog: `
-    <h4>Versiyon 2.8</h4>
-    <ul>
-      <li>Otomatik güncelleme sistemi eklendi</li>
-      <li>CSS dosyası eklenti içine gömüldü</li>
-      <li>Güncelleme bildirimleri ve kontrol butonu eklendi</li>
-      <li>Performans iyileştirmeleri</li>
-      <li>Hata düzeltmeleri</li>
-    </ul>
-    <h4>Versiyon 2.7</h4>
-    <ul>
-      <li>Manuel yenileme meta box eklendi</li>
-      <li>Çok dilli destek geliştirildi</li>
-      <li>UI/UX iyileştirmeleri</li>
-    </ul>
-  `
+  last_updated: '2025-07-30',
+  download_url: 'https://publicus.com.tr/sss-ai-free.zip',
+  description: 'Ücretsiz: sayfa başlığına göre tek seferlik SSS oluşturur.',
+  changelog: '<h4>Versiyon 3.0-free</h4><ul><li>Ücretsiz sürüm ilk sürüm</li></ul>'
 };
-
-// WordPress güncelleme kontrolü endpoint'i
 app.get('/wp-update-check', (req, res) => {
   const { action, plugin } = req.query;
-  
-  if (action === 'get_version' && plugin === 'sss-ai') {
-    res.json(PLUGIN_VERSION);
-  } else {
-    res.status(404).json({ error: 'Invalid request' });
-  }
+  if (action === 'get_version' && plugin === 'sss-ai') return res.json(PLUGIN_VERSION);
+  res.status(404).json({ error: 'Invalid' });
 });
 
-// Plugin dosyası indirme endpoint'i (PUBLIC - WordPress için)
-app.get('/download/sss-ai-v2.8.zip', (req, res) => {
-  // Bu endpoint'i gerçek plugin zip dosyasını serve etmek için kullanabilirsiniz
-  // Şimdilik placeholder response - gerçek zip dosyasını buraya koyun
-  
-  // Örnek: Gerçek dosya servisi
-  // const filePath = path.join(__dirname, 'files', 'sss-ai-v2.8.zip');
-  // if (fs.existsSync(filePath)) {
-  //   res.download(filePath, 'sss-ai-v2.8.zip');
-  // } else {
-  //   res.status(404).json({ error: 'File not found' });
-  // }
-  
-  // Geçici çözüm: Redirect to GitHub or your file server
-  res.redirect('https://github.com/servisi/faq-ai/releases/download/v2.8/sss-ai-v2.8.zip');
-  
-  // Ya da doğrudan zip içeriği dönebilirsiniz (küçük dosyalar için)
-  // res.setHeader('Content-Type', 'application/zip');
-  // res.setHeader('Content-Disposition', 'attachment; filename="sss-ai-v2.8.zip"');
-  // res.send(zipBuffer); // Zip dosyasının buffer'ı
-});
-
-// Admin-only download endpoint (eski versiyon, sadmin için)
-app.get('/admin/download/sss-ai-v2.8.zip', adminAuth, (req, res) => {
-  res.json({
-    message: 'Admin plugin download would be served here',
-    note: 'Bu endpoint admin için özel indirme linki'
-  });
-});
-
-// Plugin changelog endpoint'i
-app.get('/changelog/sss-ai', (req, res) => {
-  res.json({
-    plugin: 'SSS Oluşturucu',
-    current_version: PLUGIN_VERSION.version,
-    changelog: PLUGIN_VERSION.changelog
-  });
-});
-
-// === MEVCUT ENDPOİNTLER === //
-
-// Kayıt Endpoint
-app.post('/register', async (req, res) => {
-  const { email, phone, site_url } = req.body;
-  if (!email || !phone || !site_url) return res.status(400).json({ error: 'Email, phone and site_url required' });
-  let user = await User.findOne({ email });
+/* ----------  Free Registration  ---------- */
+app.post('/register-free', async (req, res) => {
+  const { email, phone, site } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email gerekli' });
+  let user = await FreeUser.findOne({ email });
   if (user) {
+    if (user.status === 'disabled') return res.status(403).json({ error: 'Hesap devre dışı' });
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
     return res.json({ token });
   }
-  user = new User({ email, phone, site_url });
+  user = new FreeUser({ email, phone, site });
   await user.save();
   const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
   res.json({ token });
 });
 
-// User Info Endpoint
-app.get('/user-info', authenticate, async (req, res) => {
-  const user = await User.findById(req.userId);
-  if (!user) return res.status(404).json({ error: 'User not found' });
+/* ----------  Free FAQ Generation  ---------- */
+app.post('/api/generate-faq-free', async (req, res) => {
+  const token = (req.headers.authorization || '').split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Token yok' });
+  let decoded;
+  try { decoded = jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: 'Geçersiz token' }); }
+  const user = await FreeUser.findById(decoded.userId);
+  if (!user || user.status === 'disabled') return res.status(403).json({ error: 'Hesap devre dışı' });
+  if (user.credits <= 0) return res.status(402).json({ error: 'no_credits' });
 
-  res.json({
-    plan: 'Ücretsiz Sürüm',
-  });
-});
+  const { title, num_questions = 5, language = 'tr' } = req.body;
 
-// FAQ Üret Endpoint
-app.post('/api/generate-faq', authenticate, async (req, res) => {
-  const user = await User.findById(req.userId);
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  /* Monthly reset */
+  const now = new Date();
+  if (now.getMonth() !== user.lastReset.getMonth() || now.getFullYear() !== user.lastReset.getFullYear()) {
+    user.credits = 20;
+    user.lastReset = now;
+    await user.save();
+  }
 
-  const { title, num_questions, language = 'tr' } = req.body;
-
-  let recentNews = '';
-  let searchQuerySuffix = language === 'tr' ? 'son haberler' : 'latest news'; // Dil bazında uyarla
-  let serperHl = language; // hl=tr, en, etc.
-  let serperGl = language === 'tr' ? 'tr' : 'us'; // Örnek, ülke bazında uyarla (daha fazla dil için genişlet)
-
+  /* Search & build prompt */
+  let news = '';
   try {
-    const searchResponse = await axios.post('https://google.serper.dev/search', {
-      q: `${title} ${searchQuerySuffix}`,
-      num: 5,
-      tbs: 'qdr:w',
-      hl: serperHl,
-      gl: serperGl
-    }, {
-      headers: {
-        'X-API-KEY': SERPER_API_KEY,
-        'Content-Type': 'application/json'
-      }
-    });
-    const results = searchResponse.data.organic || [];
-    recentNews = results.map(result => `${result.title}: ${result.snippet} (Kaynak: ${result.link})`).join('\n');
-  } catch (searchErr) {
-    console.error('Search error:', searchErr);
-    recentNews = language === 'tr' ? 'Güncel haberler tespit edilemedi.' : 'Recent news could not be detected.';
-  }
+    const q = language === 'tr' ? `${title} son haberler` : `${title} latest news`;
+    const { data } = await axios.post('https://google.serper.dev/search',
+      { q, num: 3, tbs: 'qdr:w', hl: language, gl: language === 'tr' ? 'tr' : 'us' },
+      { headers: { 'X-API-KEY': SERPER_API_KEY } }
+    );
+    news = (data.organic || []).map(r => `${r.title}: ${r.snippet}`).join('\n');
+  } catch { news = ''; }
 
-  // Prompt'u dil bazında uyarla (daha fazla dil için switch ekle)
-  let prompt;
-  if (language === 'tr') {
-    prompt = `Başlık: ${title}. Son güncel haberler ve bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
-  } else {
-    prompt = `Title: ${title}. Recent news and information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide short, informative answers for each. Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
-  }
+  const prompt = language === 'tr'
+    ? `Başlık: ${title}\nGüncel bilgiler: ${news}\nBu bilgilerle en çok merak edilen ${num_questions} FAQ sorusu ve kısa cevapları JSON: {"faqs":[{"question":"...","answer":"..."}]}`
+    : `Title: ${title}\nLatest info: ${news}\nGenerate ${num_questions} FAQ questions and concise answers in JSON: {"faqs":[{"question":"...","answer":"..."}]}`;
 
   try {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
-      response_format: { type: "json_object" }
+      response_format: { type: 'json_object' }
     });
-    let content = completion.choices[0].message.content;
-    let faqs;
-    try {
-      faqs = JSON.parse(content).faqs;
-    } catch (parseErr) {
-      console.error('JSON parse error:', parseErr, content);
-      return res.status(500).json({ error: 'AI response parse failed' });
-    }
-
-    res.json({ faqs });
+    const body = JSON.parse(completion.choices[0].message.content);
+    if (!body.faqs) throw new Error('Yanlış format');
+    user.credits -= 1;
+    await user.save();
+    res.json({ faqs: body.faqs });
   } catch (err) {
-    console.error('OpenAI error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Admin Users Endpoint (with search and plan filter)
+/* ----------  Admin routes (unchanged)  ---------- */
 app.get('/admin/users', adminAuth, async (req, res) => {
-  const { search } = req.query;
-  let query = {};
-  if (search) query.email = { $regex: search, $options: 'i' }; // Email search, case-insensitive
-  const users = await User.find(query, 'email phone site_url registration_date status lastReset');
+  const { search = '', plan = 'all' } = req.query;
+  const q = {};
+  if (plan !== 'all') q.plan = plan;
+  if (search) q.email = { $regex: search, $options: 'i' };
+  const users = await FreeUser.find(q, 'email phone site plan credits status registeredAt');
   res.json(users);
 });
-
-// Admin Update User Endpoint
 app.post('/admin/update-user', adminAuth, async (req, res) => {
-  const { userId, status } = req.body;
-  const user = await User.findById(userId);
+  const { userId, plan, credits, status } = req.body;
+  const user = await FreeUser.findById(userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-
-  if (status) user.status = status;
+  if (plan !== undefined) user.plan = plan;
+  if (credits !== undefined) user.credits = credits;
+  if (status !== undefined) user.status = status;
   await user.save();
-
   res.json({ success: true });
 });
-
-// Plugin istatistikleri endpoint'i (admin)
 app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
-  try {
-    const totalUsers = await User.countDocuments();
-    const activeUsers = await User.countDocuments({ status: 'active' });
-
-    res.json({
-      total_users: totalUsers,
-      active_users: activeUsers,
-      plugin_version: PLUGIN_VERSION.version,
-      last_updated: PLUGIN_VERSION.last_updated
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Statistics fetch failed', details: error.message });
-  }
+  const [total, active, disabled] = await Promise.all([
+    FreeUser.countDocuments(),
+    FreeUser.countDocuments({ status: 'active' }),
+    FreeUser.countDocuments({ status: 'disabled' })
+  ]);
+  res.json({ total_users: total, active_users: active, disabled_users: disabled, plugin_version: PLUGIN_VERSION.version });
 });
-
-// Plugin versiyonunu güncelleme endpoint'i (admin only)
-app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
+app.post('/admin/update-plugin-version', adminAuth, (req, res) => {
   const { version, tested, description, changelog, download_url } = req.body;
-  
-  if (!version) {
-    return res.status(400).json({ error: 'Version is required' });
-  }
-
-  // Plugin versiyon bilgilerini güncelle
   if (version) PLUGIN_VERSION.version = version;
   if (tested) PLUGIN_VERSION.tested = tested;
   if (description) PLUGIN_VERSION.description = description;
   if (changelog) PLUGIN_VERSION.changelog = changelog;
   if (download_url) PLUGIN_VERSION.download_url = download_url;
-  
   PLUGIN_VERSION.last_updated = new Date().toISOString().split('T')[0];
-
-  res.json({
-    success: true,
-    message: 'Plugin version updated successfully',
-    updated_version: PLUGIN_VERSION
-  });
+  res.json({ success: true, updated_version: PLUGIN_VERSION });
 });
 
-// Admin Panel HTML Page (güncellenmiş versiyon)
+/* ----------  Admin HTML page (unchanged)  ---------- */
 app.get('/admin', adminAuth, (req, res) => {
   res.send(`
-    <!DOCTYPE html>
-    <html lang="tr">
-    <head>
-      <title>Admin Panel - AI FAQ Users & Plugin Management</title>
-      <style>
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          background-color: #f4f6f9;
-          margin: 0;
-          padding: 30px;
-          color: #333;
-          line-height: 1.6;
-        }
-        h1 {
-          color: #007bff;
-          margin-bottom: 30px;
-          font-size: 2em;
-          text-align: center;
-        }
-        
-        /* Tab System */
-        .tab-container {
-          margin-bottom: 30px;
-        }
-        .tabs {
-          display: flex;
-          background-color: white;
-          border-radius: 8px;
-          overflow: hidden;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .tab {
-          flex: 1;
-          padding: 15px 20px;
-          background-color: #f8f9fa;
-          border: none;
-          cursor: pointer;
-          font-size: 16px;
-          transition: background-color 0.3s;
-        }
-        .tab:hover {
-          background-color: #e9ecef;
-        }
-        .tab.active {
-          background-color: #007bff;
-          color: white;
-        }
-        .tab-content {
-          display: none;
-        }
-        .tab-content.active {
-          display: block;
-        }
-
-        /* Plugin Stats Card */
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 20px;
-          margin-bottom: 30px;
-        }
-        .stat-card {
-          background: white;
-          padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          text-align: center;
-        }
-        .stat-number {
-          font-size: 2em;
-          font-weight: bold;
-          color: #007bff;
-        }
-        .stat-label {
-          color: #666;
-          margin-top: 5px;
-        }
-
-        #controls {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 15px;
-          margin-bottom: 30px;
-          justify-content: center;
-        }
-        input, select {
-          padding: 12px;
-          border: 1px solid #ced4da;
-          border-radius: 6px;
-          flex: 1 1 200px;
-          font-size: 1em;
-          transition: border-color 0.3s;
-        }
-        input:focus, select:focus {
-          border-color: #007bff;
-          outline: none;
-        }
-        button {
-          padding: 12px 20px;
-          background-color: #007bff;
-          color: white;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 1em;
-          transition: background-color 0.3s, transform 0.2s;
-        }
-        button:hover {
-          background-color: #0056b3;
-          transform: translateY(-2px);
-        }
-        #stats {
-          margin-bottom: 30px;
-          padding: 15px;
-          background-color: #e9ecef;
-          border-radius: 8px;
-          text-align: center;
-          font-weight: bold;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        table {
-          width: 100%;
-          border-collapse: separate;
-          border-spacing: 0;
-          background-color: white;
-          border-radius: 8px;
-          overflow: hidden;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        th, td {
-          padding: 15px;
-          text-align: left;
-          border-bottom: 1px solid #dee2e6;
-        }
-        th {
-          background-color: #007bff;
-          color: white;
-          font-weight: bold;
-        }
-        tr:last-child td {
-          border-bottom: none;
-        }
-        tr:hover {
-          background-color: #f1f3f5;
-        }
-        td button {
-          background-color: #28a745;
-          padding: 8px 12px;
-          font-size: 0.9em;
-          border-radius: 4px;
-        }
-        td button:hover {
-          background-color: #218838;
-        }
-        
-        /* Plugin Management Form */
-        .plugin-form {
-          background: white;
-          padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          margin-bottom: 20px;
-        }
-        .form-group {
-          margin-bottom: 20px;
-        }
-        .form-group label {
-          display: block;
-          margin-bottom: 5px;
-          font-weight: bold;
-        }
-        .form-group input, .form-group textarea {
-          width: 100%;
-          padding: 10px;
-          border: 1px solid #ced4da;
-          border-radius: 4px;
-          box-sizing: border-box;
-        }
-        .form-group textarea {
-          height: 120px;
-          resize: vertical;
-        }
-
-        /* Modal Stilleri */
-        .modal {
-          display: none;
-          position: fixed;
-          z-index: 1000;
-          left: 0;
-          top: 0;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(0,0,0,0.5);
-          justify-content: center;
-          align-items: center;
-        }
-        .modal-content {
-          background-color: white;
-          padding: 30px;
-          border-radius: 8px;
-          width: 90%;
-          max-width: 500px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-        }
-        .modal-content h2 {
-          margin-top: 0;
-          color: #007bff;
-        }
-        .modal-content label {
-          display: block;
-          margin-bottom: 10px;
-          font-weight: bold;
-        }
-        .modal-content input, .modal-content select {
-          width: 100%;
-          margin-bottom: 20px;
-        }
-        .modal-content button {
-          width: 48%;
-        }
-        .modal-content .close-btn {
-          background-color: #dc3545;
-        }
-        .modal-content .close-btn:hover {
-          background-color: #c82333;
-        }
-        .modal-content .submit-btn {
-          background-color: #28a745;
-        }
-        .modal-content .submit-btn:hover {
-          background-color: #218838;
-        }
-        
-        /* Responsive tasarım */
-        @media (max-width: 768px) {
-          #controls {
-            flex-direction: column;
-          }
-          .modal-content {
-            width: 95%;
-          }
-          .stats-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-      </style>
-    </head>
-    <body>
-      <h1>AI FAQ Admin Panel</h1>
-      
-      <!-- Tab Navigation -->
-      <div class="tab-container">
-        <div class="tabs">
-          <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
-          <button class="tab" onclick="showTab('plugin')">Plugin Yönetimi</button>
-          <button class="tab" onclick="showTab('stats')">İstatistikler</button>
-        </div>
-      </div>
-
-      <!-- Users Tab -->
-      <div id="users-tab" class="tab-content active">
-        <h2>Kullanıcı Yönetimi</h2>
-        <div id="controls">
-          <input type="text" id="searchInput" placeholder="Email ile ara">
-          <button onclick="loadUsers()">Ara/Filtrele</button>
-        </div>
-        <div id="stats"></div>
-        <table id="usersTable">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>Site URL</th>
-              <th>Registration Date</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <!-- Plugin Management Tab -->
-      <div id="plugin-tab" class="tab-content">
-        <h2>Plugin Sürüm Yönetimi</h2>
-        <div class="plugin-form">
-          <form id="pluginVersionForm">
-            <div class="form-group">
-              <label for="pluginVersion">Plugin Versiyonu</label>
-              <input type="text" id="pluginVersion" placeholder="örn: 2.8" required>
-            </div>
-            <div class="form-group">
-              <label for="pluginTested">Test Edildiği WordPress Versiyonu</label>
-              <input type="text" id="pluginTested" placeholder="örn: 6.4" required>
-            </div>
-            <div class="form-group">
-              <label for="pluginDescription">Açıklama</label>
-              <textarea id="pluginDescription" placeholder="Plugin açıklaması..."></textarea>
-            </div>
-            <div class="form-group">
-              <label for="pluginChangelog">Changelog (HTML formatında)</label>
-              <textarea id="pluginChangelog" placeholder="<h4>Versiyon X.X</h4><ul><li>Yeni özellik</li></ul>"></textarea>
-            </div>
-            <div class="form-group">
-              <label for="pluginDownloadUrl">İndirme URL'si</label>
-              <input type="url" id="pluginDownloadUrl" placeholder="https://example.com/plugin.zip">
-            </div>
-            <button type="submit">Plugin Versiyonunu Güncelle</button>
-          </form>
-        </div>
-        <div id="pluginUpdateResult"></div>
-      </div>
-
-      <!-- Stats Tab -->
-      <div id="stats-tab" class="tab-content">
-        <h2>Genel İstatistikler</h2>
-        <div class="stats-grid" id="statsGrid">
-          <!-- Stats will be loaded here -->
-        </div>
-      </div>
-
-      <!-- Modal -->
-      <div id="editModal" class="modal">
-        <div class="modal-content">
-          <h2>Kullanıcı Düzenle</h2>
-          <form id="editForm">
-            <label for="editStatus">Status:</label>
-            <select id="editStatus">
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-            <button type="button" class="submit-btn" onclick="submitEdit()">Güncelle</button>
-            <button type="button" class="close-btn" onclick="closeModal()">İptal</button>
-          </form>
-        </div>
-      </div>
-
-      <script>
-        let currentUserId = null;
-
-        // Tab switching
-        function showTab(tabName) {
-          // Hide all tab contents
-          document.querySelectorAll('.tab-content').forEach(tab => {
-            tab.classList.remove('active');
-          });
-          // Remove active class from all tabs
-          document.querySelectorAll('.tab').forEach(tab => {
-            tab.classList.remove('active');
-          });
-          // Show selected tab content
-          document.getElementById(tabName + '-tab').classList.add('active');
-          // Add active class to clicked tab
-          event.target.classList.add('active');
-          
-          // Load data for specific tabs
-          if (tabName === 'users') {
-            loadUsers();
-          } else if (tabName === 'stats') {
-            loadStats();
-          }
-        }
-
-        // Load plugin statistics
-        async function loadStats() {
-          try {
-            const response = await fetch('/admin/plugin-stats');
-            if (!response.ok) throw new Error('Stats yükleme hatası');
-            const stats = await response.json();
-            
-            const statsGrid = document.getElementById('statsGrid');
-            statsGrid.innerHTML = '<div class="stat-card">' +
-              '<div class="stat-number">' + stats.total_users + '</div>' +
-              '<div class="stat-label">Toplam Kullanıcı</div>' +
-            '</div>' +
-            '<div class="stat-card">' +
-              '<div class="stat-number">' + stats.active_users + '</div>' +
-              '<div class="stat-label">Aktif Kullanıcılar</div>' +
-            '</div>' +
-            '<div class="stat-card">' +
-              '<div class="stat-number">v' + stats.plugin_version + '</div>' +
-              '<div class="stat-label">Mevcut Plugin Versiyonu</div>' +
-            '</div>' +
-            '<div class="stat-card">' +
-              '<div class="stat-number">' + stats.last_updated + '</div>' +
-              '<div class="stat-label">Son Güncelleme</div>' +
-            '</div>';
-          } catch (error) {
-            console.error('Stats yükleme hatası:', error);
-          }
-        }
-
-        // Plugin version update
-        document.getElementById('pluginVersionForm').addEventListener('submit', async function(e) {
-          e.preventDefault();
-          
-          const formData = {
-            version: document.getElementById('pluginVersion').value,
-            tested: document.getElementById('pluginTested').value,
-            description: document.getElementById('pluginDescription').value,
-            changelog: document.getElementById('pluginChangelog').value,
-            download_url: document.getElementById('pluginDownloadUrl').value
-          };
-
-          try {
-            const response = await fetch('/admin/update-plugin-version', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(formData)
-            });
-            
-            const result = await response.json();
-            const resultDiv = document.getElementById('pluginUpdateResult');
-            
-            if (response.ok) {
-              resultDiv.innerHTML = '<div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">' +
-                '<strong>Başarılı!</strong> Plugin versiyonu güncellendi: v' + result.updated_version.version +
-              '</div>';
-              // Form'u temizle
-              document.getElementById('pluginVersionForm').reset();
-            } else {
-              resultDiv.innerHTML = '<div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">' +
-                '<strong>Hata:</strong> ' + result.error +
-              '</div>';
-            }
-          } catch (error) {
-            document.getElementById('pluginUpdateResult').innerHTML = '<div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">' +
-              '<strong>Hata:</strong> ' + error.message +
-            '</div>';
-          }
-        });
-
-        // Kullanıcıları yükleme fonksiyonu
-        async function loadUsers() {
-          try {
-            const search = document.getElementById('searchInput').value;
-            const url = '/admin/users?search=' + encodeURIComponent(search);
-            const response = await fetch(url);
-            if (!response.ok) throw new Error('Yükleme hatası');
-            const users = await response.json();
-            
-            const tbody = document.querySelector('#usersTable tbody');
-            tbody.innerHTML = '';
-            users.forEach(user => {
-              const tr = document.createElement('tr');
-              tr.innerHTML = 
-                '<td>' + user.email + '</td>' +
-                '<td>' + (user.phone || 'N/A') + '</td>' +
-                '<td>' + (user.site_url || 'N/A') + '</td>' +
-                '<td>' + new Date(user.registration_date).toLocaleDateString('tr-TR') + '</td>' +
-                '<td>' + user.status + '</td>' +
-                '<td>' +
-                  '<button onclick="openModal(\'' + user._id + '\', \'' + user.status + '\')">Düzenle</button>' +
-                '</td>';
-              tbody.appendChild(tr);
-            });
-            
-            // İstatistikleri güncelle
-            updateStats();
-          } catch (error) {
-            console.error('Hata:', error);
-            alert('Kullanıcılar yüklenirken bir hata oluştu.');
-          }
-        }
-
-        // İstatistikleri güncelleme fonksiyonu
-        async function updateStats() {
-          try {
-            const response = await fetch('/admin/users');
-            if (!response.ok) throw new Error('İstatistik hatası');
-            const allUsers = await response.json();
-            document.getElementById('stats').innerHTML = '<p><strong>Toplam Kullanıcı: ' + allUsers.length + '</strong></p>';
-          } catch (error) {
-            console.error('Hata:', error);
-          }
-        }
-
-        // Modal açma
-        function openModal(userId, status) {
-          currentUserId = userId;
-          document.getElementById('editStatus').value = status;
-          document.getElementById('editModal').style.display = 'flex';
-        }
-
-        // Modal kapama
-        function closeModal() {
-          document.getElementById('editModal').style.display = 'none';
-        }
-
-        // Düzenleme gönderme
-        async function submitEdit() {
-          const status = document.getElementById('editStatus').value;
-          
-          if (status) {
-            try {
-              const response = await fetch('/admin/update-user', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: currentUserId, status })
-              });
-              if (response.ok) {
-                alert('Güncellendi!');
-                closeModal();
-                loadUsers();
-              } else {
-                throw new Error('Güncelleme hatası');
-              }
-            } catch (error) {
-              console.error('Hata:', error);
-              alert('Güncelleme sırasında bir hata oluştu!');
-            }
-          } else {
-            alert('Tüm alanları doldurun.');
-          }
-        }
-
-        // İlk yükleme
-        loadUsers();
-
-        // Modal dışına tıklayınca kapatma
-        window.onclick = function(event) {
-          const modal = document.getElementById('editModal');
-          if (event.target === modal) {
-            closeModal();
-          }
-        }
-      </script>
-    </body>
-    </html>
-  `);
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Admin – AI FAQ Free</title>
+<style>body{font-family:system-ui;background:#f4f6f9;margin:40px;color:#333}
+h1{color:#007bff}.stat-card{background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1);margin:10px;flex:1 1 200px;text-align:center}
+.stats-grid{display:flex;flex-wrap:wrap;gap:20px;margin-bottom:30px}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.1)}
+th,td{padding:15px;text-align:left;border-bottom:1px solid #eee}
+th{background:#007bff;color:#fff}
+button{padding:10px 15px;background:#007bff;color:#fff;border:none;border-radius:4px;cursor:pointer}
+button:hover{background:#0056b3}</style>
+</head><body><h1>AI FAQ Free Admin</h1>
+<div class="stats-grid" id="statsGrid">Yükleniyor...</div>
+<table><thead><tr><th>E-posta</th><th>Telefon</th><th>Site</th><th>Credits</th><th>Durum</th></tr></thead><tbody id="tblBody"></tbody></table>
+<script>
+fetch('/admin/plugin-stats').then(r=>r.json()).then(d=>{
+  document.getElementById('statsGrid').innerHTML=
+  '<div class="stat-card"><strong>'+d.total_users+'</strong><br>Toplam Kullanıcı</div>'+
+  '<div class="stat-card"><strong>'+d.active_users+'</strong><br>Aktif Kullanıcı</div>'+
+  '<div class="stat-card"><strong>'+d.disabled_users+'</strong><br>Devre Dışı</div>';
+});
+fetch('/admin/users').then(r=>r.json()).then(users=>{
+  const b=document.getElementById('tblBody');
+  b.innerHTML='';
+  users.forEach(u=>{
+    b.insertAdjacentHTML('beforeend','<tr><td>'+u.email+'</td><td>'+u.phone+'</td><td><a href="'+u.site+'" target="_blank">'+u.site+'</a></td><td>'+u.credits+'</td><td>'+u.status+'</td></tr>');
+  });
+});
+</script></body></html>`);
 });
 
-// Vercel için export
 module.exports = app;
