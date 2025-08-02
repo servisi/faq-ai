@@ -43,6 +43,15 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', UserSchema);
 
+const AnnouncementSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  content: { type: String, required: true },
+  date: { type: Date, default: Date.now },
+  active: { type: Boolean, default: true },
+  priority: { type: Number, default: 0 }
+});
+const Announcement = mongoose.model('Announcement', AnnouncementSchema);
+
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -104,17 +113,9 @@ const PluginVersionSchema = new mongoose.Schema({
   last_updated: { type: Date, default: Date.now },
   download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip' },
   description: { type: String, default: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.' },
-  changelog: { type: String, default: '<h4>Versiyon 3.1</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>' }
+  changelog: { type: String, default: '<h4>Versiyon 3.1</h4><ul><li>Yeni özellik: Duyurular eklendi.</li></ul>' }
 });
 const PluginVersion = mongoose.model('PluginVersion', PluginVersionSchema);
-
-const AnnouncementSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  content: { type: String, required: true },
-  date: { type: Date, default: Date.now },
-  active: { type: Boolean, default: true }
-});
-const Announcement = mongoose.model('Announcement', AnnouncementSchema);
 
 async function getPluginVersion() {
   try {
@@ -122,14 +123,14 @@ async function getPluginVersion() {
     if (!version) {
       version = new PluginVersion({
         plugin_name: 'sss-ai',
-        version: '3.0',
+        version: '3.1',
         tested: '6.8',
         download_url: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip',
         description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem.',
         changelog: `
-          <h4>Versiyon 3.0</h4>
+          <h4>Versiyon 3.1</h4>
     <ul>
-      <li>Güncelleme sırasında oluşan hata çözüldü.</li>
+      <li>Yeni özellik: Duyurular eklendi.</li>
     </ul>
         `
       });
@@ -139,12 +140,12 @@ async function getPluginVersion() {
   } catch (error) {
     console.error('Plugin version fetch error:', error);
     return {
-      version: '3.0',
+      version: '3.1',
       tested: '6.8',
       last_updated: new Date().toISOString().split('T')[0],
       download_url: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip',
       description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.',
-      changelog: '<h4>Versiyon 3.0</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>'
+      changelog: '<h4>Versiyon 3.1</h4><ul><li>Yeni özellik: Duyurular eklendi.</li></ul>'
     };
   }
 }
@@ -276,7 +277,7 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
 
   let prompt;
   if (language === 'tr') {
-    prompt = `Başlık: ${title}. Son güncel bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Kişisel bilgiler, rezervasyon, iptal randevu gibi canlı bilgiler, Politik, dini, finansal, tıbbi gibi hassas bilgilerden kaçın. Yanıltıcı, kesinliği olmayan bilgiler verme. Cevabı Google snipet üzerinde çıkabilecek şekilde yapılandır. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
+    prompt = `Başlık: ${title}. Son güncel bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Kişisel bilgiler, rezervasyon, iptal randevu gibi canlı bilgiler, Politik, dini, finansal, tıbbi gibi hassas bilgilerden kaçın. Yanıltıcı, kesinliği olmayan bilgiler verme. Cevabı Google snipet üzerinde çıkabilecek şekilde yapılandır. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
   } else {
     prompt = `Title: ${title}. Recent information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide short, informative answers for each. Avoid personal information, live information like reservations, canceled appointments, and sensitive information like political, religious, financial, and medical. Avoid providing misleading or inaccurate information. Structure your answer so it appears in the Google snippet. Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
   }
@@ -320,6 +321,37 @@ app.post('/delete-account', authenticate, async (req, res) => {
     console.error('Account deletion error:', error);
     res.status(500).json({ error: 'Account deletion failed' });
   }
+});
+
+// Duyurular Endpoint'leri
+app.get('/announcements', authenticate, async (req, res) => {
+  const announcements = await Announcement.find({ active: true }).sort({ priority: -1, date: -1 });
+  res.json(announcements);
+});
+
+app.get('/admin/announcements', adminAuth, async (req, res) => {
+  const announcements = await Announcement.find().sort({ date: -1 });
+  res.json(announcements);
+});
+
+app.post('/admin/announcements', adminAuth, async (req, res) => {
+  const { title, content, priority } = req.body;
+  const announcement = new Announcement({ title, content, priority });
+  await announcement.save();
+  res.json({ success: true });
+});
+
+app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
+  const { id } = req.params;
+  const { title, content, priority, active } = req.body;
+  await Announcement.findByIdAndUpdate(id, { title, content, priority, active });
+  res.json({ success: true });
+});
+
+app.delete('/admin/announcements/:id', adminAuth, async (req, res) => {
+  const { id } = req.params;
+  await Announcement.findByIdAndDelete(id);
+  res.json({ success: true });
 });
 
 // Admin Users Endpoint
@@ -418,57 +450,7 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
   }
 });
 
-// Duyuruları listele (eklenti için, auth'suz veya token'la)
-app.get('/announcements', async (req, res) => {
-  const announcements = await Announcement.find({ active: true }).sort({ date: -1 });
-  res.json(announcements);
-});
-
-// Admin endpoint'leri
-app.get('/admin/announcements', adminAuth, async (req, res) => {
-  const announcements = await Announcement.find().sort({ date: -1 });
-  res.json(announcements);
-});
-
-app.get('/admin/announcements/:id', adminAuth, async (req, res) => {
-  const ann = await Announcement.findById(req.params.id);
-  if (!ann) return res.status(404).json({ error: 'Bulunamadı' });
-  res.json(ann);
-});
-
-app.post('/admin/announcements', adminAuth, async (req, res) => {
-  const { title, content, active } = req.body;
-  if (!title || !content) return res.status(400).json({ error: 'Title and content required' });
-  try {
-    const ann = new Announcement({ title, content, active });
-    await ann.save();
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
-  const { title, content, active } = req.body;
-  if (!title || !content) return res.status(400).json({ error: 'Title and content required' });
-  try {
-    await Announcement.findByIdAndUpdate(req.params.id, { title, content, active });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/admin/announcements/:id', adminAuth, async (req, res) => {
-  try {
-    await Announcement.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Admin Panel HTML Page (TAM DÜZELTMELİ)
+// Admin Panel HTML Page
 app.get('/admin', adminAuth, (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -724,10 +706,10 @@ app.get('/admin', adminAuth, (req, res) => {
       <!-- Tab Navigation -->
       <div class="tab-container">
         <div class="tabs">
-          <button class="tab active" onclick="showTab(event, 'users')">Kullanıcı Yönetimi</button>
-          <button class="tab" onclick="showTab(event, 'plugin')">Plugin Yönetimi</button>
-          <button class="tab" onclick="showTab(event, 'stats')">İstatistikler</button>
-          <button class="tab" onclick="showTab(event, 'announcements')">Duyurular Yönetimi</button>
+          <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
+          <button class="tab" onclick="showTab('plugin')">Plugin Yönetimi</button>
+          <button class="tab" onclick="showTab('announcements')">Duyurular</button>
+          <button class="tab" onclick="showTab('stats')">İstatistikler</button>
         </div>
       </div>
 
@@ -793,43 +775,47 @@ app.get('/admin', adminAuth, (req, res) => {
         <div id="pluginUpdateResult"></div>
       </div>
 
+      <!-- Duyurular Tab -->
+      <div id="announcements-tab" class="tab-content">
+        <h2>Duyurular Yönetimi</h2>
+        <div class="plugin-form">
+          <form id="announcementForm">
+            <div class="form-group">
+              <label for="annTitle">Başlık</label>
+              <input type="text" id="annTitle" required>
+            </div>
+            <div class="form-group">
+              <label for="annContent">İçerik</label>
+              <textarea id="annContent" required></textarea>
+            </div>
+            <div class="form-group">
+              <label for="annPriority">Öncelik (Yüksek sayı daha üstte)</label>
+              <input type="number" id="annPriority" value="0">
+            </div>
+            <button type="submit">Duyuru Ekle</button>
+          </form>
+        </div>
+        <table id="announcementsTable">
+          <thead>
+            <tr>
+              <th>Başlık</th>
+              <th>İçerik</th>
+              <th>Tarih</th>
+              <th>Öncelik</th>
+              <th>Aktif</th>
+              <th>İşlemler</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <!-- Stats Tab -->
       <div id="stats-tab" class="tab-content">
         <h2>Genel İstatistikler</h2>
         <div class="stats-grid" id="statsGrid">
           <!-- Stats will be loaded here -->
         </div>
-      </div>
-
-      <!-- Announcements Tab -->
-      <div id="announcements-tab" class="tab-content">
-        <h2>Duyurular Yönetimi</h2>
-        <div class="plugin-form">
-          <form id="announcementForm">
-            <div class="form-group">
-              <label for="announcementId">Duyuru ID (Düzenleme için)</label>
-              <input type="text" id="announcementId" placeholder="Boş bırakın yeni için">
-            </div>
-            <div class="form-group">
-              <label for="announcementTitle">Başlık</label>
-              <input type="text" id="announcementTitle" required>
-            </div>
-            <div class="form-group">
-              <label for="announcementContent">İçerik (HTML destekli)</label>
-              <textarea id="announcementContent" required></textarea>
-            </div>
-            <div class="form-group">
-              <label for="announcementActive">Aktif</label>
-              <input type="checkbox" id="announcementActive" checked>
-            </div>
-            <button type="submit">Kaydet / Güncelle</button>
-            <button type="button" id="deleteAnnouncement">Sil</button>
-          </form>
-        </div>
-        <div id="announcementList">
-          <!-- Duyurular burada listelenecek -->
-        </div>
-        <div id="announcementUpdateResult"></div>
       </div>
 
       <!-- Modal -->
@@ -852,14 +838,37 @@ app.get('/admin', adminAuth, (req, res) => {
         </div>
       </div>
 
+      <!-- Duyuru Düzenleme Modal -->
+      <div id="editAnnModal" class="modal">
+        <div class="modal-content">
+          <h2>Duyuru Düzenle</h2>
+          <form id="editAnnForm">
+            <label for="editAnnTitle">Başlık:</label>
+            <input type="text" id="editAnnTitle" required>
+            <label for="editAnnContent">İçerik:</label>
+            <textarea id="editAnnContent" required></textarea>
+            <label for="editAnnPriority">Öncelik:</label>
+            <input type="number" id="editAnnPriority">
+            <label for="editAnnActive">Aktif:</label>
+            <select id="editAnnActive">
+              <option value="true">Evet</option>
+              <option value="false">Hayır</option>
+            </select>
+            <button type="button" class="submit-btn" onclick="submitAnnEdit()">Güncelle</button>
+            <button type="button" class="close-btn" onclick="closeAnnModal()">İptal</button>
+          </form>
+        </div>
+      </div>
+
       <script>
         let currentUserId = null;
+        let currentAnnId = null;
         const adminUser = "${ADMIN_USER}";
         const adminPass = "${ADMIN_PASS}";
         const basicAuth = btoa(adminUser + ':' + adminPass);
 
         // Tab switching
-        function showTab(e, tabName) {
+        function showTab(tabName) {
           // Hide all tab contents
           document.querySelectorAll('.tab-content').forEach(tab => {
             tab.classList.remove('active');
@@ -871,7 +880,7 @@ app.get('/admin', adminAuth, (req, res) => {
           // Show selected tab content
           document.getElementById(tabName + '-tab').classList.add('active');
           // Add active class to clicked tab
-          e.target.classList.add('active');
+          event.target.classList.add('active');
           
           // Load data for specific tabs
           if (tabName === 'users') {
@@ -977,100 +986,6 @@ app.get('/admin', adminAuth, (req, res) => {
           }
         });
 
-        // Duyurular yükleme
-        async function loadAnnouncements() {
-          try {
-            const response = await fetch('/admin/announcements', {
-              headers: { 'Authorization': 'Basic ' + basicAuth }
-            });
-            if (!response.ok) throw new Error('Duyurular yükleme hatası');
-            const announcements = await response.json();
-            
-            const list = document.getElementById('announcementList');
-            list.innerHTML = '<h3>Mevcut Duyurular</h3><ul>';
-            announcements.forEach(ann => {
-              list.innerHTML += `<li data-id="${ann._id}">
-                <strong>${ann.title}</strong> (${ann.active ? 'Aktif' : 'Pasif'}) - ${new Date(ann.date).toLocaleDateString()}
-                <button onclick="editAnnouncement('${ann._id}')">Düzenle</button>
-              </li>`;
-            });
-            list.innerHTML += '</ul>';
-          } catch (error) {
-            console.error('Duyurular yükleme hatası:', error);
-          }
-        }
-
-        async function editAnnouncement(id) {
-          try {
-            const response = await fetch(`/admin/announcements/${id}`, {
-              headers: { 'Authorization': 'Basic ' + basicAuth }
-            });
-            const ann = await response.json();
-            document.getElementById('announcementId').value = ann._id;
-            document.getElementById('announcementTitle').value = ann.title;
-            document.getElementById('announcementContent').value = ann.content;
-            document.getElementById('announcementActive').checked = ann.active;
-          } catch (error) {
-            console.error('Düzenleme hatası:', error);
-          }
-        }
-
-        document.getElementById('announcementForm').addEventListener('submit', async function(e) {
-          e.preventDefault();
-          const id = document.getElementById('announcementId').value;
-          const formData = {
-            title: document.getElementById('announcementTitle').value,
-            content: document.getElementById('announcementContent').value,
-            active: document.getElementById('announcementActive').checked
-          };
-
-          try {
-            const url = id ? `/admin/announcements/${id}` : '/admin/announcements';
-            const method = id ? 'PUT' : 'POST';
-            const response = await fetch(url, {
-              method,
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': 'Basic ' + basicAuth
-              },
-              body: JSON.stringify(formData)
-            });
-            
-            const result = await response.json();
-            const resultDiv = document.getElementById('announcementUpdateResult');
-            if (response.ok) {
-              resultDiv.innerHTML = '<div style="background: #d1e7dd; color: #0f5132; padding: 15px;">Başarılı! Duyuru güncellendi.</div>';
-              loadAnnouncements();
-              document.getElementById('announcementForm').reset();
-            } else {
-              resultDiv.innerHTML = '<div style="background: #f8d7da; color: #842029; padding: 15px;">Hata: ' + result.error + '</div>';
-            }
-          } catch (error) {
-            console.error(error);
-          }
-        });
-
-        document.getElementById('deleteAnnouncement').addEventListener('click', async function() {
-          const id = document.getElementById('announcementId').value;
-          if (!id || !confirm('Silmek istediğinize emin misiniz?')) return;
-          
-          try {
-            const response = await fetch(`/admin/announcements/${id}`, {
-              method: 'DELETE',
-              headers: { 'Authorization': 'Basic ' + basicAuth }
-            });
-            if (response.ok) {
-              alert('Silindi!');
-              loadAnnouncements();
-              document.getElementById('announcementForm').reset();
-            } else {
-              alert('Hata: ' + (await response.json()).error);
-            }
-          } catch (error) {
-            console.error(error);
-          }
-        });
-
         // Kullanıcıları yükleme fonksiyonu
         async function loadUsers() {
           try {
@@ -1110,6 +1025,130 @@ app.get('/admin', adminAuth, (req, res) => {
           } catch (error) {
             console.error('Hata:', error);
             alert('Kullanıcılar yüklenirken bir hata oluştu.');
+          }
+        }
+
+        // Duyuruları yükleme fonksiyonu
+        async function loadAnnouncements() {
+          try {
+            const response = await fetch('/admin/announcements', {
+              headers: { 'Authorization': 'Basic ' + basicAuth }
+            });
+            
+            if (!response.ok) throw new Error('Yükleme hatası');
+            const announcements = await response.json();
+            
+            const tbody = document.querySelector('#announcementsTable tbody');
+            tbody.innerHTML = '';
+            
+            announcements.forEach(ann => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = 
+                '<td>' + ann.title + '</td>' +
+                '<td>' + ann.content + '</td>' +
+                '<td>' + new Date(ann.date).toLocaleDateString('tr-TR') + '</td>' +
+                '<td>' + ann.priority + '</td>' +
+                '<td>' + (ann.active ? 'Evet' : 'Hayır') + '</td>' +
+                '<td>' +
+                  '<button onclick="openAnnModal(\'' + ann._id + '\', \'' + ann.title + '\', \'' + ann.content + '\', ' + ann.priority + ', ' + ann.active + ')">Düzenle</button>' +
+                  '<button onclick="deleteAnnouncement(\'' + ann._id + '\')">Sil</button>' +
+                '</td>';
+              tbody.appendChild(tr);
+            });
+          } catch (error) {
+            console.error('Hata:', error);
+            alert('Duyurular yüklenirken bir hata oluştu.');
+          }
+        }
+
+        // Duyuru ekleme
+        document.getElementById('announcementForm').addEventListener('submit', async function(e) {
+          e.preventDefault();
+          
+          const title = document.getElementById('annTitle').value;
+          const content = document.getElementById('annContent').value;
+          const priority = parseInt(document.getElementById('annPriority').value);
+
+          try {
+            const response = await fetch('/admin/announcements', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Basic ' + basicAuth
+              },
+              body: JSON.stringify({ title, content, priority })
+            });
+            
+            if (response.ok) {
+              alert('Duyuru eklendi!');
+              document.getElementById('announcementForm').reset();
+              loadAnnouncements();
+            } else {
+              throw new Error('Ekleme hatası');
+            }
+          } catch (error) {
+            alert('Duyuru eklenirken hata oluştu.');
+          }
+        });
+
+        // Duyuru silme
+        async function deleteAnnouncement(id) {
+          if (confirm('Duyuruyu silmek istediğinize emin misiniz?')) {
+            try {
+              const response = await fetch('/admin/announcements/' + id, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Basic ' + basicAuth }
+              });
+              
+              if (response.ok) {
+                alert('Silindi!');
+                loadAnnouncements();
+              }
+            } catch (error) {
+              alert('Silme hatası');
+            }
+          }
+        }
+
+        // Duyuru düzenleme modal açma
+        function openAnnModal(id, title, content, priority, active) {
+          currentAnnId = id;
+          document.getElementById('editAnnTitle').value = title;
+          document.getElementById('editAnnContent').value = content;
+          document.getElementById('editAnnPriority').value = priority;
+          document.getElementById('editAnnActive').value = active.toString();
+          document.getElementById('editAnnModal').style.display = 'flex';
+        }
+
+        // Duyuru düzenleme modal kapama
+        function closeAnnModal() {
+          document.getElementById('editAnnModal').style.display = 'none';
+        }
+
+        // Duyuru düzenleme gönderme
+        async function submitAnnEdit() {
+          const title = document.getElementById('editAnnTitle').value;
+          const content = document.getElementById('editAnnContent').value;
+          const priority = parseInt(document.getElementById('editAnnPriority').value);
+          const active = document.getElementById('editAnnActive').value === 'true';
+          
+          try {
+            const response = await fetch('/admin/announcements/' + currentAnnId, {
+              method: 'PUT',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Basic ' + basicAuth
+              },
+              body: JSON.stringify({ title, content, priority, active })
+            });
+            
+            if (response.ok) {
+              alert('Güncellendi!');
+              closeAnnModal();
+              loadAnnouncements();
+            }
+          } catch (error) {
+            alert('Güncelleme hatası');
           }
         }
 
@@ -1187,13 +1226,17 @@ app.get('/admin', adminAuth, (req, res) => {
 
         // İlk yükleme
         loadUsers();
+        loadAnnouncements();
         loadStats();
 
         // Modal dışına tıklayınca kapatma
         window.onclick = function(event) {
           const modal = document.getElementById('editModal');
+          const annModal = document.getElementById('editAnnModal');
           if (event.target === modal) {
             closeModal();
+          } else if (event.target === annModal) {
+            closeAnnModal();
           }
         }
       </script>
