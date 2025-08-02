@@ -437,8 +437,10 @@ app.get('/admin/announcements/:id', adminAuth, async (req, res) => {
 });
 
 app.post('/admin/announcements', adminAuth, async (req, res) => {
+  const { title, content, active } = req.body;
+  if (!title || !content) return res.status(400).json({ error: 'Title and content required' });
   try {
-    const ann = new Announcement(req.body);
+    const ann = new Announcement({ title, content, active });
     await ann.save();
     res.json({ success: true });
   } catch (error) {
@@ -447,8 +449,10 @@ app.post('/admin/announcements', adminAuth, async (req, res) => {
 });
 
 app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
+  const { title, content, active } = req.body;
+  if (!title || !content) return res.status(400).json({ error: 'Title and content required' });
   try {
-    await Announcement.findByIdAndUpdate(req.params.id, req.body);
+    await Announcement.findByIdAndUpdate(req.params.id, { title, content, active });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -720,10 +724,10 @@ app.get('/admin', adminAuth, (req, res) => {
       <!-- Tab Navigation -->
       <div class="tab-container">
         <div class="tabs">
-          <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
-          <button class="tab" onclick="showTab('plugin')">Plugin Yönetimi</button>
-          <button class="tab" onclick="showTab('stats')">İstatistikler</button>
-          <button class="tab" onclick="showTab('announcements')">Duyurular Yönetimi</button>
+          <button class="tab active" onclick="showTab(event, 'users')">Kullanıcı Yönetimi</button>
+          <button class="tab" onclick="showTab(event, 'plugin')">Plugin Yönetimi</button>
+          <button class="tab" onclick="showTab(event, 'stats')">İstatistikler</button>
+          <button class="tab" onclick="showTab(event, 'announcements')">Duyurular Yönetimi</button>
         </div>
       </div>
 
@@ -855,7 +859,7 @@ app.get('/admin', adminAuth, (req, res) => {
         const basicAuth = btoa(adminUser + ':' + adminPass);
 
         // Tab switching
-        function showTab(tabName) {
+        function showTab(e, tabName) {
           // Hide all tab contents
           document.querySelectorAll('.tab-content').forEach(tab => {
             tab.classList.remove('active');
@@ -867,7 +871,7 @@ app.get('/admin', adminAuth, (req, res) => {
           // Show selected tab content
           document.getElementById(tabName + '-tab').classList.add('active');
           // Add active class to clicked tab
-          event.target.classList.add('active');
+          e.target.classList.add('active');
           
           // Load data for specific tabs
           if (tabName === 'users') {
