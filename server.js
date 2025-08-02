@@ -858,30 +858,29 @@ app.get('/admin', adminAuth, (req, res) => {
         const adminPass = "${ADMIN_PASS}";
         const basicAuth = btoa(adminUser + ':' + adminPass);
 
-        // Tab switching
-        function showTab(e, tabName) {
-          // Hide all tab contents
-          document.querySelectorAll('.tab-content').forEach(tab => {
-            tab.classList.remove('active');
-          });
-          // Remove active class from all tabs
-          document.querySelectorAll('.tab').forEach(tab => {
-            tab.classList.remove('active');
-          });
-          // Show selected tab content
-          document.getElementById(tabName + '-tab').classList.add('active');
-          // Add active class to clicked tab
-          e.target.classList.add('active');
-          
-          // Load data for specific tabs
-          if (tabName === 'users') {
-            loadUsers();
-          } else if (tabName === 'stats') {
-            loadStats();
-          } else if (tabName === 'announcements') {
-            loadAnnouncements();
-          }
-        }
+        function showTab(event, tabName) {
+  // Hide all tab contents
+  document.querySelectorAll('.tab-content').forEach(tab => {
+    tab.classList.remove('active');
+  });
+  // Remove active class from all tabs
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.classList.remove('active');
+  });
+  // Show selected tab content
+  document.getElementById(tabName + '-tab').classList.add('active');
+  // Add active class to clicked tab
+  event.target.classList.add('active');
+  
+  // Load data for specific tabs
+  if (tabName === 'users') {
+    loadUsers();
+  } else if (tabName === 'stats') {
+    loadStats();
+  } else if (tabName === 'announcements') {
+    loadAnnouncements();
+  }
+}
 
         // Load plugin statistics
         async function loadStats() {
@@ -1204,3 +1203,4 @@ app.get('/admin', adminAuth, (req, res) => {
 
 // Vercel için export
 module.exports = app;
+
