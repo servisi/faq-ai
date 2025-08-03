@@ -1122,8 +1122,8 @@ app.get('/admin', adminAuth, (req, res) => {
                 <div class="announcement-content">\${ann.content}</div>
                 <div class="announcement-date">\${new Date(ann.date).toLocaleDateString('tr-TR')} - \${ann.active ? 'Aktif' : 'Pasif'}</div>
                 <div class="announcement-actions">
-                  <button onclick="openAnnouncementEdit('\\\${ann._id}', '\\\${ann.title}', '\\\${ann.content}', \\\${ann.active})">Düzenle</button>
-                  <button onclick="deleteAnnouncement('\\\${ann._id}')" style="background-color: #dc3545;">Sil</button>
+                  <button onclick="openAnnouncementEdit('\${ann._id}', '\${ann.title}', '\${ann.content}', \${ann.active})">Düzenle</button>
+                  <button onclick="deleteAnnouncement('\${ann._id}')" style="background-color: #dc3545;">Sil</button>
                 </div>
               \`;
               container.appendChild(item);
