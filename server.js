@@ -8,8 +8,6 @@ const axios = require('axios');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const basicAuth = require('basic-auth');
-const fs = require('fs');
-const path = require('path');
 
 dotenv.config();
 const app = express();
@@ -43,7 +41,7 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', UserSchema);
 
-// YENİ: Duyuru Modeli
+// Duyuru Modeli
 const AnnouncementSchema = new mongoose.Schema({
   title: String,
   content: String,
@@ -236,7 +234,7 @@ app.get('/user-info', authenticate, async (req, res) => {
   });
 });
 
-// YENİ: Duyurular Endpoint'i (Herkes erişebilir)
+// Duyurular Endpoint'i (Herkes erişebilir)
 app.get('/announcements', async (req, res) => {
   try {
     const announcements = await Announcement.find({ active: true }).sort({ date: -1 });
@@ -358,7 +356,7 @@ app.post('/admin/update-user', adminAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-// YENİ: Admin Duyuru Yönetimi Endpoint'leri
+// Admin Duyuru Yönetimi Endpoint'leri
 app.get('/admin/announcements', adminAuth, async (req, res) => {
   try {
     const announcements = await Announcement.find().sort({ date: -1 });
@@ -497,6 +495,10 @@ app.get('/admin', adminAuth, (req, res) => {
   // Environment değişkenlerini al
   const adminUser = process.env.ADMIN_USER;
   const adminPass = process.env.ADMIN_PASS;
+
+  // JavaScript stringlerinde özel karakterleri temizle
+  const cleanAdminUser = adminUser.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+  const cleanAdminPass = adminPass.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
 
   res.send(`
     <!DOCTYPE html>
@@ -790,10 +792,10 @@ app.get('/admin', adminAuth, (req, res) => {
       <!-- Tab Navigation -->
       <div class="tab-container">
         <div class="tabs">
-          <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
-          <button class="tab" onclick="showTab('plugin')">Plugin Yönetimi</button>
-          <button class="tab" onclick="showTab('announcements')">Duyuru Yönetimi</button>
-          <button class="tab" onclick="showTab('stats')">İstatistikler</button>
+          <button class="tab active" onclick="showTab('users', event)">Kullanıcı Yönetimi</button>
+          <button class="tab" onclick="showTab('plugin', event)">Plugin Yönetimi</button>
+          <button class="tab" onclick="showTab('announcements', event)">Duyuru Yönetimi</button>
+          <button class="tab" onclick="showTab('stats', event)">İstatistikler</button>
         </div>
       </div>
 
@@ -859,7 +861,7 @@ app.get('/admin', adminAuth, (req, res) => {
         <div id="pluginUpdateResult"></div>
       </div>
 
-      <!-- YENİ: Duyuru Yönetimi Tab -->
+      <!-- Duyuru Yönetimi Tab -->
       <div id="announcements-tab" class="tab-content">
         <h2>Duyuru Yönetimi</h2>
         <div class="announcement-form">
@@ -936,13 +938,14 @@ app.get('/admin', adminAuth, (req, res) => {
       <script>
         let currentUserId = null;
         let currentAnnouncementId = null;
-        // Düzeltme: Değerleri doğrudan Express tarafından göm
-        const adminUser = "${adminUser}";
-        const adminPass = "${adminPass}";
+        
+        // Özel karakterler temizlendi
+        const adminUser = '${cleanAdminUser}';
+        const adminPass = '${cleanAdminPass}';
         const basicAuth = btoa(adminUser + ':' + adminPass);
 
-        // Tab switching
-        function showTab(tabName) {
+        // Tab switching - event parametresi eklendi
+        function showTab(tabName, event) {
           // Hide all tab contents
           document.querySelectorAll('.tab-content').forEach(tab => {
             tab.classList.remove('active');
@@ -1115,7 +1118,7 @@ app.get('/admin', adminAuth, (req, res) => {
               const item = document.createElement('div');
               item.className = 'announcement-item';
               
-              // Düzeltme: Özel karakterleri sanitize et
+              // Özel karakterleri sanitize et
               const safeTitle = ann.title.replace(/'/g, "\\'").replace(/"/g, '\\"');
               const safeContent = ann.content.replace(/'/g, "\\'").replace(/"/g, '\\"');
               
@@ -1229,6 +1232,10 @@ app.get('/admin', adminAuth, (req, res) => {
             
             users.forEach(user => {
               const tr = document.createElement('tr');
+              // Tırnak hataları giderildi
+              const safeId = user._id.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+              const safePlan = user.plan.replace(/'/g, "\\'");
+              const safeExpiration = user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0].replace(/'/g, "\\'") : '';
               tr.innerHTML = 
                 '<td>' + user.email + '</td>' +
                 '<td>' + (user.phone || 'N/A') + '</td>' +
@@ -1239,7 +1246,7 @@ app.get('/admin', adminAuth, (req, res) => {
                 '<td>' + new Date(user.registrationDate).toLocaleDateString('tr-TR') + '</td>' +
                 '<td>' + (user.active ? 'Aktif' : 'Pasif') + '</td>' +
                 '<td>' +
-                  '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
+                  '<button onclick="openModal(\\'' + safeId + '\\', \\'' + safePlan + '\\', ' + user.credits + ', \\'' + safeExpiration + '\\')">Düzenle</button>' +
                 '</td>';
               tbody.appendChild(tr);
             });
@@ -1348,4 +1355,3 @@ app.get('/admin', adminAuth, (req, res) => {
 
 // Vercel için export
 module.exports = app;
-
