@@ -242,7 +242,8 @@ app.get('/announcements', async (req, res) => {
     const announcements = await Announcement.find({ active: true }).sort({ date: -1 });
     res.json(announcements);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Duyuru hatası:', error);
+    res.status(500).json({ error: 'Duyurular alınamadı' });
   }
 });
 
@@ -363,7 +364,7 @@ app.get('/admin/announcements', adminAuth, async (req, res) => {
     const announcements = await Announcement.find().sort({ date: -1 });
     res.json(announcements);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Duyurular alınamadı' });
   }
 });
 
@@ -374,7 +375,7 @@ app.post('/admin/announcements', adminAuth, async (req, res) => {
     await newAnnouncement.save();
     res.json(newAnnouncement);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Duyuru oluşturulamadı' });
   }
 });
 
@@ -382,20 +383,48 @@ app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, active } = req.body;
-    const updated = await Announcement.findByIdAndUpdate(id, { title, content, active }, { new: true });
+    
+    // MongoDB ObjectId kontrolü
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Geçersiz ID formatı' });
+    }
+    
+    const updated = await Announcement.findByIdAndUpdate(
+      id, 
+      { title, content, active }, 
+      { new: true }
+    );
+    
+    if (!updated) {
+      return res.status(404).json({ error: 'Duyuru bulunamadı' });
+    }
+    
     res.json(updated);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Duyuru güncelleme hatası:', error);
+    res.status(500).json({ error: 'Duyuru güncellenemedi' });
   }
 });
 
 app.delete('/admin/announcements/:id', adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    await Announcement.findByIdAndDelete(id);
-    res.json({ success: true });
+    
+    // MongoDB ObjectId kontrolü
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Geçersiz ID formatı' });
+    }
+    
+    const result = await Announcement.findByIdAndDelete(id);
+    
+    if (!result) {
+      return res.status(404).json({ error: 'Duyuru bulunamadı' });
+    }
+    
+    res.json({ success: true, message: 'Duyuru silindi' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Duyuru silme hatası:', error);
+    res.status(500).json({ error: 'Duyuru silinemedi' });
   }
 });
 
@@ -1060,7 +1089,8 @@ app.get('/admin', adminAuth, (req, res) => {
               document.getElementById('announcementForm').reset();
               loadAnnouncements();
             } else {
-              throw new Error('Duyuru eklenemedi');
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Duyuru eklenemedi');
             }
           } catch (error) {
             console.error('Hata:', error);
@@ -1074,9 +1104,13 @@ app.get('/admin', adminAuth, (req, res) => {
             const response = await fetch('/admin/announcements', {
               headers: { 'Authorization': 'Basic ' + basicAuth }
             });
-            if (!response.ok) throw new Error('Duyurular yüklenemedi');
-            const announcements = await response.json();
             
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Duyurular yüklenemedi');
+            }
+            
+            const announcements = await response.json();
             const container = document.getElementById('announcementsList');
             container.innerHTML = '';
             
@@ -1096,7 +1130,7 @@ app.get('/admin', adminAuth, (req, res) => {
             });
           } catch (error) {
             console.error('Hata:', error);
-            alert('Duyurular yüklenirken bir hata oluştu');
+            alert('Duyurular yüklenirken bir hata oluştu: ' + error.message);
           }
         }
 
@@ -1140,7 +1174,8 @@ app.get('/admin', adminAuth, (req, res) => {
               closeAnnouncementModal();
               loadAnnouncements();
             } else {
-              throw new Error('Duyuru güncellenemedi');
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Duyuru güncellenemedi');
             }
           } catch (error) {
             console.error('Hata:', error);
@@ -1150,25 +1185,26 @@ app.get('/admin', adminAuth, (req, res) => {
 
         // Duyuru silme fonksiyonu
         async function deleteAnnouncement(id) {
-          if (confirm('Bu duyuruyu silmek istediğinize emin misiniz?')) {
-            try {
-              const response = await fetch(\`/admin/announcements/\${id}\`, {
-                method: 'DELETE',
-                headers: { 
-                  'Authorization': 'Basic ' + basicAuth
-                }
-              });
-              
-              if (response.ok) {
-                alert('Duyuru silindi!');
-                loadAnnouncements();
-              } else {
-                throw new Error('Duyuru silinemedi');
+          if (!confirm('Bu duyuruyu silmek istediğinize emin misiniz?')) return;
+          
+          try {
+            const response = await fetch(\`/admin/announcements/\${id}\`, {
+              method: 'DELETE',
+              headers: { 
+                'Authorization': 'Basic ' + basicAuth
               }
-            } catch (error) {
-              console.error('Hata:', error);
-              alert('Duyuru silinirken bir hata oluştu');
+            });
+            
+            if (response.ok) {
+              alert('Duyuru silindi!');
+              loadAnnouncements();
+            } else {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Duyuru silinemedi');
             }
+          } catch (error) {
+            console.error('Hata:', error);
+            alert('Duyuru silinirken bir hata oluştu: ' + error.message);
           }
         }
 
