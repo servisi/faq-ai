@@ -16,7 +16,7 @@ const app = express();
 app.use(express.json());
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'], // PUT ve DELETE methodları eklendi
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -379,7 +379,7 @@ app.post('/admin/announcements', adminAuth, async (req, res) => {
   }
 });
 
-// DÜZELTME: ObjectId kontrolü kaldırıldı
+// DÜZELTME: Duyuru güncelleme endpoint'i düzeltildi
 app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -402,7 +402,7 @@ app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
   }
 });
 
-// DÜZELTME: ObjectId kontrolü kaldırıldı
+// DÜZELTME: Duyuru silme endpoint'i düzeltildi
 app.delete('/admin/announcements/:id', adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1163,7 +1163,7 @@ app.get('/admin', adminAuth, (req, res) => {
           
           try {
             const response = await fetch(\`/admin/announcements/\${currentAnnouncementId}\`, {
-              method: 'PUT',
+              method: 'PUT', // PUT methodu kullanılıyor
               headers: { 
                 'Content-Type': 'application/json',
                 'Authorization': 'Basic ' + basicAuth
