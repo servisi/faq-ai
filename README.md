@@ -49,7 +49,7 @@ It uses **AI** + **real-time news** to generate **SEO-optimized**, **WPML/Polyla
 
 ```bash
 # Clone repo
-git clone https://github.com/your-org/wp-ai-faq.git
+git clone https://github.com/servisi/faq-ai.git
 
 # Composer install (if using PHP dependencies)
 composer install
@@ -58,7 +58,7 @@ composer install
 npm install && npm run build
 ```
 
-Upload the `wp-ai-faq` folder to `/wp-content/plugins/` and activate via WordPress Admin.
+Upload the `faq-ai` folder to `/wp-content/plugins/` and activate via WordPress Admin.
 
 ---
 
