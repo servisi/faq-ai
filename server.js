@@ -43,12 +43,12 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', UserSchema);
 
+// YENİ: Duyuru Modeli
 const AnnouncementSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  content: { type: String, required: true },
+  title: String,
+  content: String,
   date: { type: Date, default: Date.now },
-  active: { type: Boolean, default: true },
-  priority: { type: Number, default: 0 }
+  active: { type: Boolean, default: true }
 });
 const Announcement = mongoose.model('Announcement', AnnouncementSchema);
 
@@ -113,7 +113,7 @@ const PluginVersionSchema = new mongoose.Schema({
   last_updated: { type: Date, default: Date.now },
   download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip' },
   description: { type: String, default: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.' },
-  changelog: { type: String, default: '<h4>Versiyon 3.1</h4><ul><li>Yeni özellik: Duyurular eklendi.</li></ul>' }
+  changelog: { type: String, default: '<h4>Versiyon 3.1</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>' }
 });
 const PluginVersion = mongoose.model('PluginVersion', PluginVersionSchema);
 
@@ -123,14 +123,14 @@ async function getPluginVersion() {
     if (!version) {
       version = new PluginVersion({
         plugin_name: 'sss-ai',
-        version: '3.1',
+        version: '3.0',
         tested: '6.8',
         download_url: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip',
         description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem.',
         changelog: `
-          <h4>Versiyon 3.1</h4>
+          <h4>Versiyon 3.0</h4>
     <ul>
-      <li>Yeni özellik: Duyurular eklendi.</li>
+      <li>Güncelleme sırasında oluşan hata çözüldü.</li>
     </ul>
         `
       });
@@ -140,12 +140,12 @@ async function getPluginVersion() {
   } catch (error) {
     console.error('Plugin version fetch error:', error);
     return {
-      version: '3.1',
+      version: '3.0',
       tested: '6.8',
       last_updated: new Date().toISOString().split('T')[0],
       download_url: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip',
       description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.',
-      changelog: '<h4>Versiyon 3.1</h4><ul><li>Yeni özellik: Duyurular eklendi.</li></ul>'
+      changelog: '<h4>Versiyon 3.0</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>'
     };
   }
 }
@@ -236,6 +236,16 @@ app.get('/user-info', authenticate, async (req, res) => {
   });
 });
 
+// YENİ: Duyurular Endpoint'i (Herkes erişebilir)
+app.get('/announcements', async (req, res) => {
+  try {
+    const announcements = await Announcement.find({ active: true }).sort({ date: -1 });
+    res.json(announcements);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // FAQ Üret Endpoint
 app.post('/api/generate-faq', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
@@ -323,37 +333,6 @@ app.post('/delete-account', authenticate, async (req, res) => {
   }
 });
 
-// Duyurular Endpoint'leri
-app.get('/announcements', authenticate, async (req, res) => {
-  const announcements = await Announcement.find({ active: true }).sort({ priority: -1, date: -1 });
-  res.json(announcements);
-});
-
-app.get('/admin/announcements', adminAuth, async (req, res) => {
-  const announcements = await Announcement.find().sort({ date: -1 });
-  res.json(announcements);
-});
-
-app.post('/admin/announcements', adminAuth, async (req, res) => {
-  const { title, content, priority } = req.body;
-  const announcement = new Announcement({ title, content, priority });
-  await announcement.save();
-  res.json({ success: true });
-});
-
-app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
-  const { id } = req.params;
-  const { title, content, priority, active } = req.body;
-  await Announcement.findByIdAndUpdate(id, { title, content, priority, active });
-  res.json({ success: true });
-});
-
-app.delete('/admin/announcements/:id', adminAuth, async (req, res) => {
-  const { id } = req.params;
-  await Announcement.findByIdAndDelete(id);
-  res.json({ success: true });
-});
-
 // Admin Users Endpoint
 app.get('/admin/users', adminAuth, async (req, res) => {
   const { search, plan } = req.query;
@@ -376,6 +355,48 @@ app.post('/admin/update-user', adminAuth, async (req, res) => {
   await user.save();
 
   res.json({ success: true });
+});
+
+// YENİ: Admin Duyuru Yönetimi Endpoint'leri
+app.get('/admin/announcements', adminAuth, async (req, res) => {
+  try {
+    const announcements = await Announcement.find().sort({ date: -1 });
+    res.json(announcements);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/admin/announcements', adminAuth, async (req, res) => {
+  try {
+    const { title, content } = req.body;
+    const newAnnouncement = new Announcement({ title, content });
+    await newAnnouncement.save();
+    res.json(newAnnouncement);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, active } = req.body;
+    const updated = await Announcement.findByIdAndUpdate(id, { title, content, active }, { new: true });
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/admin/announcements/:id', adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await Announcement.findByIdAndDelete(id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Plugin istatistikleri endpoint'i
@@ -636,6 +657,44 @@ app.get('/admin', adminAuth, (req, res) => {
           resize: vertical;
         }
 
+        /* Announcements Form */
+        .announcement-form {
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          margin-bottom: 20px;
+        }
+        .announcement-list {
+          margin-top: 30px;
+        }
+        .announcement-item {
+          background: white;
+          padding: 15px;
+          margin-bottom: 15px;
+          border-radius: 8px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .announcement-title {
+          font-weight: bold;
+          margin-bottom: 5px;
+        }
+        .announcement-content {
+          margin-bottom: 10px;
+        }
+        .announcement-date {
+          font-size: 12px;
+          color: #666;
+        }
+        .announcement-actions {
+          margin-top: 10px;
+        }
+        .announcement-actions button {
+          padding: 5px 10px;
+          font-size: 14px;
+          margin-right: 5px;
+        }
+        
         /* Modal Stilleri */
         .modal {
           display: none;
@@ -666,7 +725,7 @@ app.get('/admin', adminAuth, (req, res) => {
           margin-bottom: 10px;
           font-weight: bold;
         }
-        .modal-content input, .modal-content select {
+        .modal-content input, .modal-content select, .modal-content textarea {
           width: 100%;
           margin-bottom: 20px;
         }
@@ -708,7 +767,7 @@ app.get('/admin', adminAuth, (req, res) => {
         <div class="tabs">
           <button class="tab active" onclick="showTab('users')">Kullanıcı Yönetimi</button>
           <button class="tab" onclick="showTab('plugin')">Plugin Yönetimi</button>
-          <button class="tab" onclick="showTab('announcements')">Duyurular</button>
+          <button class="tab" onclick="showTab('announcements')">Duyuru Yönetimi</button>
           <button class="tab" onclick="showTab('stats')">İstatistikler</button>
         </div>
       </div>
@@ -775,39 +834,25 @@ app.get('/admin', adminAuth, (req, res) => {
         <div id="pluginUpdateResult"></div>
       </div>
 
-      <!-- Duyurular Tab -->
+      <!-- YENİ: Duyuru Yönetimi Tab -->
       <div id="announcements-tab" class="tab-content">
-        <h2>Duyurular Yönetimi</h2>
-        <div class="plugin-form">
+        <h2>Duyuru Yönetimi</h2>
+        <div class="announcement-form">
           <form id="announcementForm">
             <div class="form-group">
-              <label for="annTitle">Başlık</label>
-              <input type="text" id="annTitle" required>
+              <label for="announcementTitle">Başlık</label>
+              <input type="text" id="announcementTitle" placeholder="Duyuru başlığı" required>
             </div>
             <div class="form-group">
-              <label for="annContent">İçerik</label>
-              <textarea id="annContent" required></textarea>
-            </div>
-            <div class="form-group">
-              <label for="annPriority">Öncelik (Yüksek sayı daha üstte)</label>
-              <input type="number" id="annPriority" value="0">
+              <label for="announcementContent">İçerik</label>
+              <textarea id="announcementContent" placeholder="Duyuru içeriği" required></textarea>
             </div>
             <button type="submit">Duyuru Ekle</button>
           </form>
         </div>
-        <table id="announcementsTable">
-          <thead>
-            <tr>
-              <th>Başlık</th>
-              <th>İçerik</th>
-              <th>Tarih</th>
-              <th>Öncelik</th>
-              <th>Aktif</th>
-              <th>İşlemler</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+        <div class="announcement-list" id="announcementsList">
+          <!-- Duyurular burada listelenecek -->
+        </div>
       </div>
 
       <!-- Stats Tab -->
@@ -839,30 +884,33 @@ app.get('/admin', adminAuth, (req, res) => {
       </div>
 
       <!-- Duyuru Düzenleme Modal -->
-      <div id="editAnnModal" class="modal">
+      <div id="editAnnouncementModal" class="modal">
         <div class="modal-content">
           <h2>Duyuru Düzenle</h2>
-          <form id="editAnnForm">
-            <label for="editAnnTitle">Başlık:</label>
-            <input type="text" id="editAnnTitle" required>
-            <label for="editAnnContent">İçerik:</label>
-            <textarea id="editAnnContent" required></textarea>
-            <label for="editAnnPriority">Öncelik:</label>
-            <input type="number" id="editAnnPriority">
-            <label for="editAnnActive">Aktif:</label>
-            <select id="editAnnActive">
-              <option value="true">Evet</option>
-              <option value="false">Hayır</option>
-            </select>
-            <button type="button" class="submit-btn" onclick="submitAnnEdit()">Güncelle</button>
-            <button type="button" class="close-btn" onclick="closeAnnModal()">İptal</button>
+          <form id="editAnnouncementForm">
+            <input type="hidden" id="editAnnouncementId">
+            <div class="form-group">
+              <label for="editAnnouncementTitle">Başlık</label>
+              <input type="text" id="editAnnouncementTitle" required>
+            </div>
+            <div class="form-group">
+              <label for="editAnnouncementContent">İçerik</label>
+              <textarea id="editAnnouncementContent" required></textarea>
+            </div>
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="editAnnouncementActive"> Aktif
+              </label>
+            </div>
+            <button type="button" class="submit-btn" onclick="submitAnnouncementEdit()">Kaydet</button>
+            <button type="button" class="close-btn" onclick="closeAnnouncementModal()">İptal</button>
           </form>
         </div>
       </div>
 
       <script>
         let currentUserId = null;
-        let currentAnnId = null;
+        let currentAnnouncementId = null;
         const adminUser = "${ADMIN_USER}";
         const adminPass = "${ADMIN_PASS}";
         const basicAuth = btoa(adminUser + ':' + adminPass);
@@ -885,10 +933,10 @@ app.get('/admin', adminAuth, (req, res) => {
           // Load data for specific tabs
           if (tabName === 'users') {
             loadUsers();
-          } else if (tabName === 'stats') {
-            loadStats();
           } else if (tabName === 'announcements') {
             loadAnnouncements();
+          } else if (tabName === 'stats') {
+            loadStats();
           }
         }
 
@@ -902,36 +950,36 @@ app.get('/admin', adminAuth, (req, res) => {
             const stats = await response.json();
             
             const statsGrid = document.getElementById('statsGrid');
-            statsGrid.innerHTML = `
+            statsGrid.innerHTML = \`
               <div class="stat-card">
-                <div class="stat-number">${stats.total_users}</div>
+                <div class="stat-number">\${stats.total_users}</div>
                 <div class="stat-label">Toplam Kullanıcı</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.free_users}</div>
+                <div class="stat-number">\${stats.free_users}</div>
                 <div class="stat-label">Free Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.pro_users}</div>
+                <div class="stat-number">\${stats.pro_users}</div>
                 <div class="stat-label">Pro Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.active_users}</div>
+                <div class="stat-number">\${stats.active_users}</div>
                 <div class="stat-label">Aktif Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.inactive_users}</div>
+                <div class="stat-number">\${stats.inactive_users}</div>
                 <div class="stat-label">Pasif Kullanıcılar</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">v${stats.plugin_version}</div>
+                <div class="stat-number">v\${stats.plugin_version}</div>
                 <div class="stat-label">Mevcut Plugin Versiyonu</div>
               </div>
               <div class="stat-card">
-                <div class="stat-number">${stats.last_updated}</div>
+                <div class="stat-number">\${stats.last_updated}</div>
                 <div class="stat-label">Son Güncelleme</div>
               </div>
-            `;
+            \`;
           } catch (error) {
             console.error('Stats yükleme hatası:', error);
             document.getElementById('statsGrid').innerHTML = '<p>İstatistikler yüklenirken hata oluştu</p>';
@@ -964,27 +1012,165 @@ app.get('/admin', adminAuth, (req, res) => {
             const resultDiv = document.getElementById('pluginUpdateResult');
             
             if (response.ok) {
-              resultDiv.innerHTML = `
+              resultDiv.innerHTML = \`
                 <div style="background: #d1e7dd; color: #0f5132; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v${result.updated_version.version}
+                  <strong>Başarılı!</strong> Plugin versiyonu güncellendi: v\${result.updated_version.version}
                 </div>
-              `;
+              \`;
               document.getElementById('pluginVersionForm').reset();
             } else {
-              resultDiv.innerHTML = `
+              resultDiv.innerHTML = \`
                 <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                  <strong>Hata:</strong> ${result.error || 'Bilinmeyen hata'}
+                  <strong>Hata:</strong> \${result.error || 'Bilinmeyen hata'}
                 </div>
-              `;
+              \`;
             }
           } catch (error) {
-            document.getElementById('pluginUpdateResult').innerHTML = `
+            document.getElementById('pluginUpdateResult').innerHTML = \`
               <div style="background: #f8d7da; color: #842029; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                <strong>Hata:</strong> ${error.message}
+                <strong>Hata:</strong> \${error.message}
               </div>
-            `;
+            \`;
           }
         });
+
+        // Duyuru ekleme formu
+        document.getElementById('announcementForm').addEventListener('submit', async function(e) {
+          e.preventDefault();
+          const title = document.getElementById('announcementTitle').value;
+          const content = document.getElementById('announcementContent').value;
+          
+          if (!title || !content) {
+            alert('Lütfen tüm alanları doldurun');
+            return;
+          }
+          
+          try {
+            const response = await fetch('/admin/announcements', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Basic ' + basicAuth
+              },
+              body: JSON.stringify({ title, content })
+            });
+            
+            if (response.ok) {
+              alert('Duyuru eklendi!');
+              document.getElementById('announcementForm').reset();
+              loadAnnouncements();
+            } else {
+              throw new Error('Duyuru eklenemedi');
+            }
+          } catch (error) {
+            console.error('Hata:', error);
+            alert('Duyuru eklenirken bir hata oluştu: ' + error.message);
+          }
+        });
+
+        // Duyuruları yükleme fonksiyonu
+        async function loadAnnouncements() {
+          try {
+            const response = await fetch('/admin/announcements', {
+              headers: { 'Authorization': 'Basic ' + basicAuth }
+            });
+            if (!response.ok) throw new Error('Duyurular yüklenemedi');
+            const announcements = await response.json();
+            
+            const container = document.getElementById('announcementsList');
+            container.innerHTML = '';
+            
+            announcements.forEach(ann => {
+              const item = document.createElement('div');
+              item.className = 'announcement-item';
+              item.innerHTML = \`
+                <div class="announcement-title">\${ann.title}</div>
+                <div class="announcement-content">\${ann.content}</div>
+                <div class="announcement-date">\${new Date(ann.date).toLocaleDateString('tr-TR')} - \${ann.active ? 'Aktif' : 'Pasif'}</div>
+                <div class="announcement-actions">
+                  <button onclick="openAnnouncementEdit('\\\${ann._id}', '\\\${ann.title}', '\\\${ann.content}', \\\${ann.active})">Düzenle</button>
+                  <button onclick="deleteAnnouncement('\\\${ann._id}')" style="background-color: #dc3545;">Sil</button>
+                </div>
+              \`;
+              container.appendChild(item);
+            });
+          } catch (error) {
+            console.error('Hata:', error);
+            alert('Duyurular yüklenirken bir hata oluştu');
+          }
+        }
+
+        // Duyuru düzenleme modalını aç
+        function openAnnouncementEdit(id, title, content, active) {
+          currentAnnouncementId = id;
+          document.getElementById('editAnnouncementTitle').value = title;
+          document.getElementById('editAnnouncementContent').value = content;
+          document.getElementById('editAnnouncementActive').checked = active;
+          document.getElementById('editAnnouncementModal').style.display = 'flex';
+        }
+
+        // Duyuru düzenleme modalını kapat
+        function closeAnnouncementModal() {
+          document.getElementById('editAnnouncementModal').style.display = 'none';
+        }
+
+        // Duyuru düzenlemeyi kaydet
+        async function submitAnnouncementEdit() {
+          const title = document.getElementById('editAnnouncementTitle').value;
+          const content = document.getElementById('editAnnouncementContent').value;
+          const active = document.getElementById('editAnnouncementActive').checked;
+          
+          if (!title || !content) {
+            alert('Lütfen tüm alanları doldurun');
+            return;
+          }
+          
+          try {
+            const response = await fetch(\`/admin/announcements/\${currentAnnouncementId}\`, {
+              method: 'PUT',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Basic ' + basicAuth
+              },
+              body: JSON.stringify({ title, content, active })
+            });
+            
+            if (response.ok) {
+              alert('Duyuru güncellendi!');
+              closeAnnouncementModal();
+              loadAnnouncements();
+            } else {
+              throw new Error('Duyuru güncellenemedi');
+            }
+          } catch (error) {
+            console.error('Hata:', error);
+            alert('Duyuru güncellenirken bir hata oluştu: ' + error.message);
+          }
+        }
+
+        // Duyuru silme fonksiyonu
+        async function deleteAnnouncement(id) {
+          if (confirm('Bu duyuruyu silmek istediğinize emin misiniz?')) {
+            try {
+              const response = await fetch(\`/admin/announcements/\${id}\`, {
+                method: 'DELETE',
+                headers: { 
+                  'Authorization': 'Basic ' + basicAuth
+                }
+              });
+              
+              if (response.ok) {
+                alert('Duyuru silindi!');
+                loadAnnouncements();
+              } else {
+                throw new Error('Duyuru silinemedi');
+              }
+            } catch (error) {
+              console.error('Hata:', error);
+              alert('Duyuru silinirken bir hata oluştu');
+            }
+          }
+        }
 
         // Kullanıcıları yükleme fonksiyonu
         async function loadUsers() {
@@ -1015,7 +1201,7 @@ app.get('/admin', adminAuth, (req, res) => {
                 '<td>' + new Date(user.registrationDate).toLocaleDateString('tr-TR') + '</td>' +
                 '<td>' + (user.active ? 'Aktif' : 'Pasif') + '</td>' +
                 '<td>' +
-                  '<button onclick="openModal(\'' + user._id + '\', \'' + user.plan + '\', ' + user.credits + ', \'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\')">Düzenle</button>' +
+                  '<button onclick="openModal(\\'' + user._id + '\\', \\'' + user.plan + '\\', ' + user.credits + ', \\'' + (user.expirationDate ? new Date(user.expirationDate).toISOString().split('T')[0] : '') + '\\')">Düzenle</button>' +
                 '</td>';
               tbody.appendChild(tr);
             });
@@ -1025,130 +1211,6 @@ app.get('/admin', adminAuth, (req, res) => {
           } catch (error) {
             console.error('Hata:', error);
             alert('Kullanıcılar yüklenirken bir hata oluştu.');
-          }
-        }
-
-        // Duyuruları yükleme fonksiyonu
-        async function loadAnnouncements() {
-          try {
-            const response = await fetch('/admin/announcements', {
-              headers: { 'Authorization': 'Basic ' + basicAuth }
-            });
-            
-            if (!response.ok) throw new Error('Yükleme hatası');
-            const announcements = await response.json();
-            
-            const tbody = document.querySelector('#announcementsTable tbody');
-            tbody.innerHTML = '';
-            
-            announcements.forEach(ann => {
-              const tr = document.createElement('tr');
-              tr.innerHTML = 
-                '<td>' + ann.title + '</td>' +
-                '<td>' + ann.content + '</td>' +
-                '<td>' + new Date(ann.date).toLocaleDateString('tr-TR') + '</td>' +
-                '<td>' + ann.priority + '</td>' +
-                '<td>' + (ann.active ? 'Evet' : 'Hayır') + '</td>' +
-                '<td>' +
-                  '<button onclick="openAnnModal(\'' + ann._id + '\', \'' + ann.title + '\', \'' + ann.content + '\', ' + ann.priority + ', ' + ann.active + ')">Düzenle</button>' +
-                  '<button onclick="deleteAnnouncement(\'' + ann._id + '\')">Sil</button>' +
-                '</td>';
-              tbody.appendChild(tr);
-            });
-          } catch (error) {
-            console.error('Hata:', error);
-            alert('Duyurular yüklenirken bir hata oluştu.');
-          }
-        }
-
-        // Duyuru ekleme
-        document.getElementById('announcementForm').addEventListener('submit', async function(e) {
-          e.preventDefault();
-          
-          const title = document.getElementById('annTitle').value;
-          const content = document.getElementById('annContent').value;
-          const priority = parseInt(document.getElementById('annPriority').value);
-
-          try {
-            const response = await fetch('/admin/announcements', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': 'Basic ' + basicAuth
-              },
-              body: JSON.stringify({ title, content, priority })
-            });
-            
-            if (response.ok) {
-              alert('Duyuru eklendi!');
-              document.getElementById('announcementForm').reset();
-              loadAnnouncements();
-            } else {
-              throw new Error('Ekleme hatası');
-            }
-          } catch (error) {
-            alert('Duyuru eklenirken hata oluştu.');
-          }
-        });
-
-        // Duyuru silme
-        async function deleteAnnouncement(id) {
-          if (confirm('Duyuruyu silmek istediğinize emin misiniz?')) {
-            try {
-              const response = await fetch('/admin/announcements/' + id, {
-                method: 'DELETE',
-                headers: { 'Authorization': 'Basic ' + basicAuth }
-              });
-              
-              if (response.ok) {
-                alert('Silindi!');
-                loadAnnouncements();
-              }
-            } catch (error) {
-              alert('Silme hatası');
-            }
-          }
-        }
-
-        // Duyuru düzenleme modal açma
-        function openAnnModal(id, title, content, priority, active) {
-          currentAnnId = id;
-          document.getElementById('editAnnTitle').value = title;
-          document.getElementById('editAnnContent').value = content;
-          document.getElementById('editAnnPriority').value = priority;
-          document.getElementById('editAnnActive').value = active.toString();
-          document.getElementById('editAnnModal').style.display = 'flex';
-        }
-
-        // Duyuru düzenleme modal kapama
-        function closeAnnModal() {
-          document.getElementById('editAnnModal').style.display = 'none';
-        }
-
-        // Duyuru düzenleme gönderme
-        async function submitAnnEdit() {
-          const title = document.getElementById('editAnnTitle').value;
-          const content = document.getElementById('editAnnContent').value;
-          const priority = parseInt(document.getElementById('editAnnPriority').value);
-          const active = document.getElementById('editAnnActive').value === 'true';
-          
-          try {
-            const response = await fetch('/admin/announcements/' + currentAnnId, {
-              method: 'PUT',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': 'Basic ' + basicAuth
-              },
-              body: JSON.stringify({ title, content, priority, active })
-            });
-            
-            if (response.ok) {
-              alert('Güncellendi!');
-              closeAnnModal();
-              loadAnnouncements();
-            }
-          } catch (error) {
-            alert('Güncelleme hatası');
           }
         }
 
@@ -1226,17 +1288,18 @@ app.get('/admin', adminAuth, (req, res) => {
 
         // İlk yükleme
         loadUsers();
-        loadAnnouncements();
         loadStats();
+        loadAnnouncements();
 
         // Modal dışına tıklayınca kapatma
         window.onclick = function(event) {
           const modal = document.getElementById('editModal');
-          const annModal = document.getElementById('editAnnModal');
+          const announcementModal = document.getElementById('editAnnouncementModal');
           if (event.target === modal) {
             closeModal();
-          } else if (event.target === annModal) {
-            closeAnnModal();
+          }
+          if (event.target === announcementModal) {
+            closeAnnouncementModal();
           }
         }
       </script>
