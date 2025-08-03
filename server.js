@@ -286,12 +286,12 @@ app.post('/api/generate-faq', authenticate, async (req, res) => {
     recentNews = language === 'tr' ? 'Güncel haberler tespit edilemedi.' : 'Recent news could not be detected.';
   }
 
-  let prompt;
-  if (language === 'tr') {
-    prompt = `Başlık: ${title}. Son güncel bilgiler: ${recentNews}. Bu güncel bilgilerle en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Kişisel bilgiler, rezervasyon, iptal randevu gibi canlı bilgiler, Politik, dini, finansal, tıbbi gibi hassas bilgilerden kaçın. Yanıltıcı, kesinliği olmayan bilgiler verme. Cevabı Google snipet üzerinde çıkabilecek şekilde yapılandır. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
-  } else {
-    prompt = `Title: ${title}. Recent information: ${recentNews}. Based on this current information, generate the top ${num_questions} FAQ questions and provide short, informative answers for each. Avoid personal information, live information like reservations, canceled appointments, and sensitive information like political, religious, financial, and medical. Avoid providing misleading or inaccurate information. Structure your answer so it appears in the Google snippet. Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
-  }
+ let prompt;
+if (language === 'tr') {
+  prompt = `Başlık: ${title}. Bu başlık ile ilgili en çok aranan ${num_questions} FAQ sorusu üret ve her birine kısa, bilgilendirici cevap ver. Kişisel bilgiler, rezervasyon, iptal randevu gibi canlı bilgiler, politik, siyasi, dini, finansal, tıbbi gibi hassas bilgilerden kaçın. Yanıltıcı, kesinliği olmayan bilgiler verme. Cevabı Google snippet üzerinde çıkabilecek şekilde yapılandır. Yanıtı JSON formatında ver: {"faqs": [{"question": "Soru", "answer": "Cevap"}]}`;
+} else {
+  prompt = `Title: ${title}. Generate the top ${num_questions} FAQ questions related to this title and provide short, informative answers for each. Avoid personal information, live information like reservations, canceled appointments, and sensitive information like political, religious, financial, and medical. Avoid providing misleading or inaccurate information. Structure your answer so it appears in the Google snippet. Respond in JSON format: {"faqs": [{"question": "Question", "answer": "Answer"}]}`;
+}
 
   try {
     const completion = await openai.chat.completions.create({
@@ -1348,3 +1348,4 @@ app.get('/admin', adminAuth, (req, res) => {
 
 // Vercel için export
 module.exports = app;
+
