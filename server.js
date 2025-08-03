@@ -494,6 +494,10 @@ app.post('/admin/update-plugin-version', adminAuth, async (req, res) => {
 
 // Admin Panel HTML Page
 app.get('/admin', adminAuth, (req, res) => {
+  // Environment değişkenlerini al
+  const adminUser = process.env.ADMIN_USER;
+  const adminPass = process.env.ADMIN_PASS;
+
   res.send(`
     <!DOCTYPE html>
     <html lang="tr">
@@ -932,8 +936,9 @@ app.get('/admin', adminAuth, (req, res) => {
       <script>
         let currentUserId = null;
         let currentAnnouncementId = null;
-        const adminUser = "${ADMIN_USER}";
-        const adminPass = "${ADMIN_PASS}";
+        // Düzeltme: Değerleri doğrudan Express tarafından göm
+        const adminUser = "${adminUser}";
+        const adminPass = "${adminPass}";
         const basicAuth = btoa(adminUser + ':' + adminPass);
 
         // Tab switching
