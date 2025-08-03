@@ -379,15 +379,11 @@ app.post('/admin/announcements', adminAuth, async (req, res) => {
   }
 });
 
+// DÜZELTME: ObjectId kontrolü kaldırıldı
 app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, active } = req.body;
-    
-    // MongoDB ObjectId kontrolü
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'Geçersiz ID formatı' });
-    }
     
     const updated = await Announcement.findByIdAndUpdate(
       id, 
@@ -406,14 +402,10 @@ app.put('/admin/announcements/:id', adminAuth, async (req, res) => {
   }
 });
 
+// DÜZELTME: ObjectId kontrolü kaldırıldı
 app.delete('/admin/announcements/:id', adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // MongoDB ObjectId kontrolü
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'Geçersiz ID formatı' });
-    }
     
     const result = await Announcement.findByIdAndDelete(id);
     
@@ -1117,12 +1109,17 @@ app.get('/admin', adminAuth, (req, res) => {
             announcements.forEach(ann => {
               const item = document.createElement('div');
               item.className = 'announcement-item';
+              
+              // Düzeltme: Özel karakterleri sanitize et
+              const safeTitle = ann.title.replace(/'/g, "\\'").replace(/"/g, '\\"');
+              const safeContent = ann.content.replace(/'/g, "\\'").replace(/"/g, '\\"');
+              
               item.innerHTML = \`
                 <div class="announcement-title">\${ann.title}</div>
                 <div class="announcement-content">\${ann.content}</div>
                 <div class="announcement-date">\${new Date(ann.date).toLocaleDateString('tr-TR')} - \${ann.active ? 'Aktif' : 'Pasif'}</div>
                 <div class="announcement-actions">
-                  <button onclick="openAnnouncementEdit('\${ann._id}', '\${ann.title}', '\${ann.content}', \${ann.active})">Düzenle</button>
+                  <button onclick="openAnnouncementEdit('\${ann._id}', '\${safeTitle}', '\${safeContent}', \${ann.active})">Düzenle</button>
                   <button onclick="deleteAnnouncement('\${ann._id}')" style="background-color: #dc3545;">Sil</button>
                 </div>
               \`;
