@@ -108,7 +108,7 @@ async function resetCreditsIfNeeded(user) {
 // Plugin Version Schema
 const PluginVersionSchema = new mongoose.Schema({
   plugin_name: { type: String, default: 'sss-ai' },
-  version: { type: String, default: '3.1' },
+  version: { type: String, default: '1.0.0' },
   tested: { type: String, default: '6.8' },
   last_updated: { type: Date, default: Date.now },
   download_url: { type: String, default: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip' },
@@ -123,14 +123,14 @@ async function getPluginVersion() {
     if (!version) {
       version = new PluginVersion({
         plugin_name: 'sss-ai',
-        version: '3.0',
+        version: '1.0.0',
         tested: '6.8',
         download_url: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip',
         description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler. Kredi tabanlı sistem.',
         changelog: `
-          <h4>Versiyon 3.0</h4>
+          <h4>Versiyon 1.0.0</h4>
     <ul>
-      <li>Güncelleme sırasında oluşan hata çözüldü.</li>
+      <li>İlk Sürüm</li>
     </ul>
         `
       });
@@ -140,12 +140,12 @@ async function getPluginVersion() {
   } catch (error) {
     console.error('Plugin version fetch error:', error);
     return {
-      version: '3.0',
+      version: '1.0.0',
       tested: '6.8',
       last_updated: new Date().toISOString().split('T')[0],
       download_url: 'https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip',
       description: 'Sayfa başlığına göre Yapay Zeka ile güncel SSS üretir ve ekler.',
-      changelog: '<h4>Versiyon 3.0</h4><ul><li>Güncelleme sırasında oluşan hata çözüldü.</li></ul>'
+      changelog: '<h4>Versiyon 1.0.0</h4><ul><li>İlk sürüm.</li></ul>'
     };
   }
 }
@@ -172,7 +172,7 @@ app.get('/wp-update-check', async (req, res) => {
 });
 
 // Plugin dosyası indirme endpoint'i
-app.get('/download/sss-ai-v3.1.zip', (req, res) => {
+app.get('/download/sss-ai-v1.0.0.zip', (req, res) => {
   res.redirect('https://github.com/servisi/faq-ai/releases/latest/download/sss-ai.zip');
 });
 
@@ -1348,3 +1348,4 @@ app.get('/admin', adminAuth, (req, res) => {
 
 // Vercel için export
 module.exports = app;
+
