@@ -188,66 +188,106 @@ app.get('/changelog/sss-ai', async (req, res) => {
   });
 });
 
-// Kayıt Endpoint (GÜNCELLENDİ)
+// Kayıt Endpoint (GÜNCELLENDİ - Hata mesajları iyileştirildi)
 app.post('/register', async (req, res) => {
   const { email, phone, site } = req.body;
-  if (!email || !phone) return res.status(400).json({ error: 'Email ve telefon gereklidir' });
   
-  // 1. Aynı site için aktif hesap kontrolü
-  const activeSiteUser = await User.findOne({ site, active: true });
-  if (activeSiteUser) {
+  // 1. Zorunlu alan kontrolü
+  if (!email || !phone) {
     return res.status(400).json({ 
-      error: `Bu site URL'si zaten bir hesaba kayıtlı. Destek için WhatsApp: +85251396035`,
-      contact: activeSiteUser.email
+      error: 'Email ve telefon gereklidir',
+      code: 'required_fields_missing'
+    });
+  }
+  
+  // 2. Email format kontrolü
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ 
+      error: 'Geçersiz email formatı',
+      code: 'invalid_email'
+    });
+  }
+  
+  // 3. Telefon format kontrolü (basit)
+  if (phone.length < 10) {
+    return res.status(400).json({ 
+      error: 'Telefon numarası en az 10 karakter olmalıdır',
+      code: 'invalid_phone'
     });
   }
 
-  // 2. Email/telefon ile aktif hesap kontrolü
-  const existingUser = await User.findOne({ 
-    $or: [{ email }, { phone }],
-    active: true
-  });
-
-  if (existingUser) {
-    if (existingUser.site === site) {
-      // Aynı site için token dön
-      const token = jwt.sign({ userId: existingUser._id }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ token });
-    } else {
-      // Farklı site için hata
+  try {
+    // 4. Aynı site için aktif hesap kontrolü
+    const activeSiteUser = await User.findOne({ site, active: true });
+    if (activeSiteUser) {
       return res.status(400).json({ 
-        error: `Bu e-posta/telefon başka bir site (${existingUser.site}) için kullanılıyor. Destek için WhatsApp: +85251396035`,
-        contact: existingUser.email
+        error: `Bu site zaten kayıtlı! Site: ${site}`,
+        contact: activeSiteUser.email,
+        code: 'site_already_registered',
+        whatsapp: 'https://wa.me/+85251396035?text=' + encodeURIComponent(
+          `Site çakışması: ${site} - Mevcut hesap: ${activeSiteUser.email}`
+        )
       });
     }
-  }
 
-  // 3. Pasif hesap (reaktivasyon)
-  const inactiveUser = await User.findOne({ 
-    $or: [{ email }, { phone }],
-    active: false
-  });
+    // 5. Email/telefon ile aktif hesap kontrolü
+    const existingUser = await User.findOne({ 
+      $or: [{ email }, { phone }],
+      active: true
+    });
 
-  if (inactiveUser) {
-    inactiveUser.active = true;
-    inactiveUser.site = site;
-    await inactiveUser.save();
+    if (existingUser) {
+      if (existingUser.site === site) {
+        // Aynı site için token dön
+        const token = jwt.sign({ userId: existingUser._id }, JWT_SECRET, { expiresIn: '30d' });
+        return res.json({ token });
+      } else {
+        // Farklı site için hata
+        return res.status(400).json({ 
+          error: `Bu bilgiler başka sitede kullanılıyor! Site: ${existingUser.site}`,
+          contact: existingUser.email,
+          code: 'credentials_used_elsewhere',
+          whatsapp: 'https://wa.me/+85251396035?text=' + encodeURIComponent(
+            `Bilgi çakışması: ${email}/${phone} - Mevcut site: ${existingUser.site} - Yeni site: ${site}`
+          )
+        });
+      }
+    }
+
+    // 6. Pasif hesap (reaktivasyon)
+    const inactiveUser = await User.findOne({ 
+      $or: [{ email }, { phone }],
+      active: false
+    });
+
+    if (inactiveUser) {
+      inactiveUser.active = true;
+      inactiveUser.site = site;
+      await inactiveUser.save();
+      
+      const token = jwt.sign({ userId: inactiveUser._id }, JWT_SECRET, { expiresIn: '30d' });
+      return res.json({ token });
+    }
+
+    // 7. Yeni kayıt
+    const user = new User({ 
+      email, 
+      phone,
+      site,
+      registrationDate: new Date()
+    });
     
-    const token = jwt.sign({ userId: inactiveUser._id }, JWT_SECRET, { expiresIn: '30d' });
-    return res.json({ token });
+    await user.save();
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token });
+  } catch (err) {
+    console.error('Kayıt hatası:', err);
+    res.status(500).json({ 
+      error: 'Sunucu hatası: Lütfen daha sonra tekrar deneyin',
+      code: 'server_error'
+    });
   }
-
-  // 4. Yeni kayıt
-  const user = new User({ 
-    email, 
-    phone,
-    site,
-    registrationDate: new Date()
-  });
-  
-  await user.save();
-  const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token });
 });
 
 // User Info Endpoint
