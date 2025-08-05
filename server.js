@@ -16,7 +16,7 @@ const app = express();
 app.use(express.json());
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'], // PUT ve DELETE methodları eklendi
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -31,9 +31,9 @@ app.use('/api/generate-faq', limiter);
 mongoose.connect(process.env.MONGO_URI);
 
 const UserSchema = new mongoose.Schema({
-  email: String,
-  phone: String,
-  site: String,
+  email: { type: String, required: true, index: true },
+  phone: { type: String, required: true, index: true },
+  site: { type: String, required: true, unique: true },
   credits: { type: Number, default: 20 },
   lastReset: { type: Date, default: Date.now },
   plan: { type: String, default: 'free' },
@@ -188,36 +188,71 @@ app.get('/changelog/sss-ai', async (req, res) => {
   });
 });
 
-// Kayıt Endpoint
+// Kayıt Endpoint - GÜNCELLENDİ
 app.post('/register', async (req, res) => {
   const { email, phone, site } = req.body;
-  if (!email || !phone) return res.status(400).json({ error: 'Email ve telefon gereklidir' });
+  if (!email || !phone || !site) return res.status(400).json({ error: 'Email, telefon ve site gereklidir' });
   
-  let user = await User.findOne({ email });
-  if (user) {
-    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
+  // Aynı email veya telefon kontrolü (farklı sitelerde)
+  const existingUser = await User.findOne({ 
+    $or: [{ email }, { phone }],
+    site: { $ne: site } // Farklı sitelerde arama
+  });
+  
+  if (existingUser) {
+    return res.status(400).json({ 
+      error: 'Bu email veya telefon başka bir sitede kullanılıyor. Lütfen WhatsApp iletişim: +85251396035'
+    });
+  }
+
+  // Aynı site için daha önce kayıt var mı?
+  const existingSiteUser = await User.findOne({ site });
+  if (existingSiteUser) {
+    // Site zaten kayıtlıysa hesabı aktifleştir
+    existingSiteUser.active = true;
+    await existingSiteUser.save();
+    
+    const token = jwt.sign({ userId: existingSiteUser._id }, JWT_SECRET, { expiresIn: '30d' });
     return res.json({ token });
   }
   
-  user = new User({ 
+  // Yeni kullanıcı oluştur
+  const user = new User({ 
     email, 
     phone,
     site,
+    active: true, // Otomatik aktif
     registrationDate: new Date()
   });
   
-  await user.save();
-  const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token });
+  try {
+    await user.save();
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token });
+  } catch (error) {
+    if (error.code === 11000) { // MongoDB duplicate key error
+      res.status(400).json({ 
+        error: 'Bu site zaten kayıtlı. Lütfen farklı bir site URL\'si kullanın.' 
+      });
+    } else {
+      res.status(500).json({ error: 'Kayıt sırasında hata oluştu' });
+    }
+  }
 });
 
-// User Info Endpoint
+// User Info Endpoint - GÜNCELLENDİ
 app.get('/user-info', authenticate, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   await checkProExpiration(user);
   await resetCreditsIfNeeded(user);
+
+  // Hesabı aktifleştir (eklenti yeniden kurulduysa)
+  if (!user.active) {
+    user.active = true;
+    await user.save();
+  }
 
   const now = new Date();
   let remainingDays = 0;
@@ -426,7 +461,7 @@ app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
     const totalUsers = await User.countDocuments();
     const freeUsers = await User.countDocuments({ plan: 'free' });
     const proUsers = await User.countDocuments({ plan: 'pro' });
-    const activeUsers = await User.countDocuments({ credits: { $gt: 0 } });
+    const activeUsers = await User.countDocuments({ active: true });
     const inactiveUsers = await User.countDocuments({ active: false });
     const pluginVersion = await getPluginVersion();
 
@@ -1348,4 +1383,3 @@ app.get('/admin', adminAuth, (req, res) => {
 
 // Vercel için export
 module.exports = app;
-
