@@ -39,7 +39,8 @@ const UserSchema = new mongoose.Schema({
   plan: { type: String, default: 'free' },
   expirationDate: { type: Date, default: null },
   registrationDate: { type: Date, default: Date.now },
-  active: { type: Boolean, default: true }
+  active: { type: Boolean, default: true },
+  deleted: { type: Boolean, default: false } // Yeni: Silinme durumu
 });
 const User = mongoose.model('User', UserSchema);
 
@@ -188,15 +189,25 @@ app.get('/changelog/sss-ai', async (req, res) => {
   });
 });
 
-// Kayıt Endpoint - GÜNCELLENDİ
+// Kayıt Endpoint - TAMAMEN YENİLENDİ
 app.post('/register', async (req, res) => {
   const { email, phone, site } = req.body;
   if (!email || !phone || !site) return res.status(400).json({ error: 'Email, telefon ve site gereklidir' });
   
-  // Aynı email veya telefon kontrolü (farklı sitelerde)
+  // 1. Sitenin daha önce kullanılıp kullanılmadığını kontrol et (aktif veya silinmiş)
+  const existingSiteUser = await User.findOne({ site });
+  
+  if (existingSiteUser) {
+    // 2. Site zaten kayıtlıysa kesinlikle yeni kayıt oluşturma
+    return res.status(400).json({ 
+      error: 'Bu site zaten kayıtlı. Her site için sadece bir hesap oluşturulabilir. Lütfen WhatsApp iletişim: +85251396035'
+    });
+  }
+
+  // 3. Email veya telefonun başka sitede kullanılıp kullanılmadığını kontrol et
   const existingUser = await User.findOne({ 
     $or: [{ email }, { phone }],
-    site: { $ne: site } // Farklı sitelerde arama
+    deleted: { $ne: true } // Silinmemiş hesaplarda kontrol
   });
   
   if (existingUser) {
@@ -204,24 +215,14 @@ app.post('/register', async (req, res) => {
       error: 'Bu email veya telefon başka bir sitede kullanılıyor. Lütfen WhatsApp iletişim: +85251396035'
     });
   }
-
-  // Aynı site için daha önce kayıt var mı?
-  const existingSiteUser = await User.findOne({ site });
-  if (existingSiteUser) {
-    // Site zaten kayıtlıysa hesabı aktifleştir
-    existingSiteUser.active = true;
-    await existingSiteUser.save();
-    
-    const token = jwt.sign({ userId: existingSiteUser._id }, JWT_SECRET, { expiresIn: '30d' });
-    return res.json({ token });
-  }
   
-  // Yeni kullanıcı oluştur
+  // 4. Yeni kullanıcı oluştur
   const user = new User({ 
     email, 
     phone,
     site,
-    active: true, // Otomatik aktif
+    active: true,
+    deleted: false,
     registrationDate: new Date()
   });
   
@@ -353,13 +354,15 @@ if (language === 'tr') {
   }
 });
 
-// Hesap Silme Endpoint
+// Hesap Silme Endpoint - TAMAMEN YENİLENDİ
 app.post('/delete-account', authenticate, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // Hesabı kalıcı olarak silme, sadece işaretle
     user.active = false;
+    user.deleted = true;
     await user.save();
 
     res.json({ success: true });
@@ -372,7 +375,7 @@ app.post('/delete-account', authenticate, async (req, res) => {
 // Admin Users Endpoint
 app.get('/admin/users', adminAuth, async (req, res) => {
   const { search, plan } = req.query;
-  let query = {};
+  let query = { deleted: false }; // Sadece silinmemiş hesaplar
   if (plan && plan !== 'all') query.plan = plan;
   if (search) query.email = { $regex: search, $options: 'i' };
   const users = await User.find(query, 'email phone site plan credits expirationDate registrationDate active');
@@ -458,11 +461,11 @@ app.delete('/admin/announcements/:id', adminAuth, async (req, res) => {
 // Plugin istatistikleri endpoint'i
 app.get('/admin/plugin-stats', adminAuth, async (req, res) => {
   try {
-    const totalUsers = await User.countDocuments();
-    const freeUsers = await User.countDocuments({ plan: 'free' });
-    const proUsers = await User.countDocuments({ plan: 'pro' });
-    const activeUsers = await User.countDocuments({ active: true });
-    const inactiveUsers = await User.countDocuments({ active: false });
+    const totalUsers = await User.countDocuments({ deleted: false });
+    const freeUsers = await User.countDocuments({ plan: 'free', deleted: false });
+    const proUsers = await User.countDocuments({ plan: 'pro', deleted: false });
+    const activeUsers = await User.countDocuments({ active: true, deleted: false });
+    const inactiveUsers = await User.countDocuments({ active: false, deleted: false });
     const pluginVersion = await getPluginVersion();
 
     res.json({
